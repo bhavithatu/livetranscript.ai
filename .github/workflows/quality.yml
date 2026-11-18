@@ -86,7 +86,8 @@ jobs:
 
   aptitude-browser:
     name: Aptitude browser workflow
-    runs-on: ubuntu-latest
+    # Match the pinned Playwright runtime; ubuntu-latest can advance independently.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read

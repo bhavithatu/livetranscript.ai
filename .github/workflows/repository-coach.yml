@@ -21,7 +21,8 @@ permissions:
   contents: read
 jobs:
   browser-and-contracts:
-    runs-on: ubuntu-latest
+    # Match the pinned Playwright runtime; ubuntu-latest can advance independently.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
