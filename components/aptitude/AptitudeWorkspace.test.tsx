@@ -19,6 +19,7 @@ vi.mock('@/lib/aptitude/useAptitudeCapture', () => ({ useAptitudeCapture: (optio
 vi.mock('./captureInput', () => ({ readCaptureFile: (...args: unknown[]) => mocks.read(...args), createPracticeCapture: () => mocks.practice() }))
 
 import { AptitudeWorkspace } from './AptitudeWorkspace'
+import { comparisonFixture } from './comparisonTestFixtures'
 
 function capture(id: string): AptitudeCapture {
   return { id, image: `data:image/png;base64,${btoa(id)}`, width: 100, height: 80, capturedAt: Date.now(), sourceHash: id }
@@ -73,6 +74,49 @@ async function manualAnswer() {
 }
 
 describe('aptitude workspace', () => {
+  it('defaults to single and discloses additional model calls before comparison is started', async () => {
+    render(<AptitudeWorkspace />)
+    const mode = screen.getByRole('combobox', { name: 'Analysis mode' }) as HTMLSelectElement
+    expect(mode.value).toBe('single')
+    chooseScreenshot()
+    await screen.findByRole('button', { name: 'Analyze this capture' })
+    fireEvent.change(mode, { target: { value: 'compare' } })
+    expect(fetch).not.toHaveBeenCalled()
+    expect(screen.getByText(/same screenshot to 2–3 configured models/).textContent).toContain('additional provider credits')
+    expect(screen.getByRole('heading', { name: 'Ready to compare this capture.' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Analyze this capture' }))
+    expect(pending[0].request.strategy).toBe('compare')
+    await complete(0, comparisonFixture(answer(pending[0].request), 'majority'))
+    expect(screen.getByRole('region', { name: 'Model comparison' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Majority agreement' })).toBeTruthy()
+  })
+
+  it('cancels and pauses on mode change, keeps the screenshot, and rejects retired automatic callbacks and results', async () => {
+    mocks.screen.sharing = true
+    render(<AptitudeWorkspace />)
+    const mode = screen.getByRole('combobox', { name: 'Analysis mode' })
+    fireEvent.change(mode, { target: { value: 'compare' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Start automatic capture' }))
+    const retiredCallback = mocks.options!.onCapture
+    const first = capture('compare-first')
+    act(() => retiredCallback(first))
+    expect(pending[0].request.strategy).toBe('compare')
+    expect(screen.getByRole('heading', { name: 'Comparing models' })).toBeTruthy()
+    fireEvent.change(mode, { target: { value: 'single' } })
+    expect(pending[0].signal.aborted).toBe(true)
+    expect(mocks.options?.enabled).toBe(false)
+    expect(screen.getByAltText('Question screenshot ready for analysis').getAttribute('src')).toBe(first.image)
+    act(() => retiredCallback(capture('late-old-mode')))
+    expect(pending).toHaveLength(1)
+    await complete(0, comparisonFixture(answer(pending[0].request)))
+    expect(screen.queryByRole('region', { name: 'Model comparison' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Analyze this capture' }))
+    expect(pending[1].request.strategy).toBeUndefined()
+    expect(pending[1].request.image).toBe(first.image)
+    await complete(1)
+    expect(screen.getByRole('heading', { name: 'B — 25%' })).toBeTruthy()
+  })
+
   it('analyzes an uploaded screenshot without starting screen or microphone capture', async () => {
     render(<AptitudeWorkspace />)
     expect(mocks.screen.start).not.toHaveBeenCalled()

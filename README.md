@@ -26,6 +26,9 @@ Speak or capture a call and watch the words appear the moment they're said, with
 The dedicated **Aptitude** mode at `/copilot?mode=aptitude` supports screenshot
 upload, explicit screen sharing, automatic capture of stable visual changes,
 question categories, worked answers, arithmetic checks, and session history.
+An optional **Compare models** strategy runs two or three configured image models
+on the same screenshot and shows their individual answers, agreement, and checks.
+Conflicting source readings or an unresolved vote withhold the recommendation.
 See [the implementation and verification guide](docs/aptitude-mode.md) and
 [the bounded aptitude evaluation suite](evals/aptitude/README.md). Model accuracy
 and real-device capture quality require separate live validation.
@@ -74,7 +77,7 @@ Copy `.env.example` to `.env.local` and provide your own values. **Never commit 
 | `ASSEMBLYAI_API_KEY` | Alternate ASR (higher accuracy) | optional |
 | `OPENAI_API_KEY` | Correction + summaries | optional |
 | `ANTHROPIC_API_KEY` | Claude screenshot transcription + default repository specialists | for repository AI |
-| `APTITUDE_MODEL` / `APTITUDE_FALLBACK_MODELS` | Explicit aptitude vision candidates, using the corresponding existing provider keys | optional; [configuration and evaluation](docs/aptitude-mode.md) |
+| `APTITUDE_MODEL` / `APTITUDE_FALLBACK_MODELS` / `APTITUDE_COMPARISON_MODELS` | Single-model candidates or an explicit parallel comparison group, using the corresponding existing provider keys | optional; [configuration and evaluation](docs/aptitude-mode.md) |
 | `COPILOT_REPO_MODEL_*` | Per-role vision, requirements, implementation, debugger, reviewer and synthesis models | optional; [configuration and benchmarks](evals/repo/README.md) |
 | `GROQ_API_KEY` | Groq-hosted specialist model overrides | for Groq models |
 | `ABLY_API_KEY` | Realtime for meeting rooms and remote-assistance signaling; also the fallback source for remote session signing | for rooms or remote assistance |

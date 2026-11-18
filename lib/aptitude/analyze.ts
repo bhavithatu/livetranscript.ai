@@ -2,11 +2,12 @@ import { createHash } from 'node:crypto'
 import Anthropic from '@anthropic-ai/sdk'
 import OpenAI from 'openai'
 import { parseRepoImage } from '@/lib/repo/agentHttp'
-import { APTITUDE_OBSERVATION_JSON_SCHEMA, parseAptitudeObservation, parseAptitudeRequest, parseAptitudeResult, type AptitudeRequest, type AptitudeResult } from './schema'
+import { APTITUDE_OBSERVATION_JSON_SCHEMA, parseAptitudeObservation, parseAptitudeRequest, parseAptitudeResult, type AptitudeComparisonCandidate, type AptitudeRequest, type AptitudeResult } from './schema'
 import { APTITUDE_SYSTEM_PROMPT, aptitudeUserPrompt } from './prompt'
-import { AptitudeServiceError, configuredAptitudeModels, providerKey, type AptitudeEnvironment, type AptitudeModel } from './modelPolicy'
+import { AptitudeServiceError, configuredAptitudeComparisonModels, configuredAptitudeModels, providerKey, type AptitudeEnvironment, type AptitudeModel } from './modelPolicy'
 import { verifyAptitudeObservation } from './verify'
 import { validateAptitudeImage } from './image'
+import { comparisonReviewQuestion, selectAptitudeComparison } from './comparison'
 
 export type AptitudeProviderReply = { text: string; model: string; inputTokens?: number; outputTokens?: number }
 export type AptitudeTransportInput = { candidate: AptitudeModel; request: AptitudeRequest; signal: AbortSignal; env: AptitudeEnvironment }
@@ -71,7 +72,7 @@ export async function analyzeAptitude(value: AptitudeRequest, parentSignal?: Abo
   const sourceHash = createHash('sha256').update(Buffer.from(image.data, 'base64')).digest('hex')
   const env = options.env ?? process.env
   if (parentSignal?.aborted) throw new AptitudeServiceError('Analysis was cancelled.', 499, 'ANALYSIS_CANCELLED')
-  const candidates = configuredAptitudeModels(env)
+  const candidates = request.strategy === 'compare' ? configuredAptitudeComparisonModels(env) : configuredAptitudeModels(env)
   const controller = new AbortController()
   let timedOut = false
   const timeoutMs = Math.min(25_000, Math.max(1, options.timeoutMs ?? 25_000))
@@ -80,6 +81,52 @@ export async function analyzeAptitude(value: AptitudeRequest, parentSignal?: Abo
   parentSignal?.addEventListener('abort', onAbort, { once: true })
   if (parentSignal?.aborted) controller.abort()
   try {
+    if (request.strategy === 'compare') {
+      // Each configured model gets one independent call with the same image. No fallback or shared drafts.
+      const outcomes = await Promise.all(candidates.map(async (candidate): Promise<AptitudeComparisonCandidate> => {
+        const attemptStarted = performance.now()
+        let attemptReply: AptitudeProviderReply | undefined
+        let attempted = false
+        let completed = false
+        const metadata = () => ({ modelId: candidate.id, provider: candidate.provider,
+          model: typeof attemptReply?.model === 'string' && attemptReply.model.trim() && attemptReply.model.length <= 200 ? attemptReply.model : null,
+          durationMs: Math.round(performance.now()-attemptStarted) })
+        try {
+          if (controller.signal.aborted) throw new Error('Aborted before attempt')
+          attempted = true
+          const reply = await abortable((options.transport ?? defaultAptitudeTransport)({ candidate, request, signal: controller.signal, env }), controller.signal)
+          attemptReply = reply
+          if (performance.now()-started >= timeoutMs) { timedOut = true; controller.abort() }
+          if (controller.signal.aborted || parentSignal?.aborted) throw new Error('Late or cancelled result')
+          if (!metadata().model) throw new Error('Missing returned model identity')
+          const parsed = parseAptitudeObservation(JSON.parse(reply.text))
+          const { observation, verification } = verifyAptitudeObservation(parsed)
+          if (controller.signal.aborted || parentSignal?.aborted) throw new Error('Cancelled result')
+          completed = true
+          return { ...metadata(), status: 'complete', observation, verification, error: null }
+        } catch {
+          return { ...metadata(), status: timedOut ? 'timed_out' : 'failed', observation: null, verification: null,
+            error: timedOut ? 'The model did not complete within the shared analysis deadline.' : 'The model could not produce a complete, valid analysis.' }
+        } finally {
+          if (attempted) {
+            try { options.onAttempt?.({ requestedModel: candidate.model, model: metadata().model, provider: candidate.provider,
+              durationMs: Math.round(performance.now()-attemptStarted), inputTokens: attemptReply?.inputTokens ?? null, outputTokens: attemptReply?.outputTokens ?? null, completed }) } catch { /* Metrics cannot change an analysis outcome. */ }
+          }
+        }
+      }))
+      // Timeouts retain candidate details. User cancellation invalidates the entire request and its late answers.
+      if (parentSignal?.aborted || (controller.signal.aborted && !timedOut)) cancelled(false)
+      const { comparison, selected } = selectAptitudeComparison(outcomes)
+      const review = comparisonReviewQuestion(outcomes)
+      const allFailed = outcomes.every(candidate => candidate.status !== 'complete')
+      const observation = selected?.observation ?? { ...review, status: allFailed ? 'error' as const : 'ambiguous' as const, answer: null,
+        message: comparison.decision === 'disagreement' ? 'The model answers could not be reconciled with matching evidence. Review the comparison before choosing an answer.'
+          : 'Too few models produced eligible answers to corroborate a result. Review the candidates or retry.' }
+      const questionId = observation.question ? createHash('sha256').update(JSON.stringify({ sourceHash, category: observation.category, question: observation.question })).digest('hex') : null
+      return parseAptitudeResult({ ...observation, schemaVersion: 1, captureId: request.captureId, questionVersion: request.questionVersion, sourceHash, questionId,
+        verification: selected?.verification ?? { method: 'none', outcome: 'not_run', notes: ['No corroborated answer was selected. Candidate checks remain available for review.'] },
+        model: selected?.model ?? null, provider: selected?.provider ?? null, durationMs: Math.round(performance.now()-started), comparison })
+    }
     for (const candidate of candidates) {
       if (controller.signal.aborted) cancelled(timedOut)
       const remaining = timeoutMs - (performance.now() - started)

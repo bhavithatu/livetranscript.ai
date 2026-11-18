@@ -3,7 +3,8 @@
 import Image from 'next/image'
 import { useEffect, useState } from 'react'
 import type { AptitudeSessionEntry } from '@/lib/aptitude/useAptitudeSession'
-import { APTITUDE_CATEGORY_LABELS } from '@/lib/aptitude/schema'
+import { APTITUDE_CATEGORY_LABELS, type AptitudeResult, type AptitudeStrategy } from '@/lib/aptitude/schema'
+import { AptitudeComparison } from './AptitudeComparison'
 import styles from './AptitudeWorkspace.module.css'
 
 function Elapsed({ entry }: { entry: AptitudeSessionEntry }) {
@@ -21,21 +22,51 @@ export function aptitudeEntryLabel(entry: AptitudeSessionEntry, index?: number) 
   return `Capture ${index === undefined ? new Date(entry.capture.capturedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : index + 1}`
 }
 
+export function aptitudeStrategyLabel(strategy: AptitudeStrategy) {
+  return strategy === 'compare' ? 'Compare models' : 'Single model'
+}
+
 export function aptitudeEntryStatus(entry: AptitudeSessionEntry) {
-  if (entry.status === 'analyzing') return 'Analyzing'
+  if (entry.status === 'analyzing') return entry.strategy === 'compare' ? 'Comparing models' : 'Analyzing'
   if (entry.status === 'cancelled') return 'Stopped'
   if (entry.status === 'error') return 'Could not finish'
   return { solved: 'Answer ready', needs_capture: 'Needs another capture', ambiguous: 'Uncertain', unsupported: 'Unsupported question', error: 'Could not finish' }[entry.result?.status ?? 'error']
 }
 
-export function AptitudeAnswer({ entry, index, onRetry, onStop, onCapture }: {
+function SuggestedAnswer({ result }: { result: AptitudeResult }) {
+  const answer = result.answer
+  if (!answer || result.status !== 'solved') return null
+  const choices = result.question?.options.filter((option) => answer.selectedOptionIds.includes(option.id)) ?? []
+  return <>
+    <div className={styles.answerValue}>
+      <p className={styles.eyebrow}>Suggested answer</p>
+      {choices.length > 0 ? <h3>{choices.map((choice) => `${choice.label} — ${choice.text}`).join(' · ')}</h3>
+        : <h3>{answer.value ? `${answer.value}${answer.unit ? ` ${answer.unit}` : ''}` : answer.summary}</h3>}
+      <p>{answer.summary}</p>
+    </div>
+    <section className={styles.explanation} aria-label="Worked explanation">
+      <h3>How to solve it</h3>
+      <ol>{answer.workedExplanation.map((step, index) => <li key={index}>{step}</li>)}</ol>
+    </section>
+    <section className={styles.verification} aria-label="Answer check">
+      <h3>{result.verification.outcome === 'passed' ? 'Check passed' : result.verification.outcome === 'disagreed' ? 'Check needs review' : 'Check'}</h3>
+      <p className={styles.muted}>{result.verification.method === 'arithmetic' ? 'Arithmetic verification' : result.verification.method === 'source_review' ? 'Review against captured evidence' : 'No independent check was available.'}</p>
+      {result.verification.notes.length > 0 && <ul>{result.verification.notes.map((note, index) => <li key={index}>{note}</li>)}</ul>}
+    </section>
+  </>
+}
+
+export function AptitudeAnswer({ entry, index, retryStrategy, onRetry, onStop, onCapture }: {
   entry: AptitudeSessionEntry; index: number
+  retryStrategy?: AptitudeStrategy
   onRetry: () => void; onStop: () => void; onCapture: () => void
 }) {
   const result = entry.result
   const question = result?.question
-  const answer = result?.answer
-  const choices = question?.options.filter((option) => answer?.selectedOptionIds.includes(option.id)) ?? []
+  const comparison = result?.comparison
+  const recommendationAllowed = !comparison || (comparison.decision === 'agreement' || comparison.decision === 'majority') && !!comparison.selectedModelId
+  const answer = recommendationAllowed ? result?.answer : null
+  const suggestedAnswer = answer && result ? <SuggestedAnswer result={result} /> : null
   return <article className={styles.answer} aria-label="Question analysis">
     <header className={styles.answerHeader}>
       <div>
@@ -44,10 +75,10 @@ export function AptitudeAnswer({ entry, index, onRetry, onStop, onCapture }: {
       </div>
       <Elapsed key={`${entry.id}-${entry.questionVersion}`} entry={entry} />
     </header>
-    <p className={styles.muted}>Captured <time dateTime={new Date(entry.capture.capturedAt).toISOString()}>{new Date(entry.capture.capturedAt).toLocaleTimeString()}</time> · Attempt {entry.questionVersion}</p>
+    <p className={styles.muted}>Captured <time dateTime={new Date(entry.capture.capturedAt).toISOString()}>{new Date(entry.capture.capturedAt).toLocaleTimeString()}</time> · Attempt {entry.questionVersion} · {aptitudeStrategyLabel(entry.strategy)}</p>
 
     {entry.status === 'analyzing' && <div className={styles.pending}>
-      <p role="status">Reading this capture and checking the answer…</p>
+      <p role="status">{entry.strategy === 'compare' ? 'Comparing model answers for this capture…' : 'Reading this capture and checking the answer…'}</p>
       <p className={styles.muted}>A new detected question can replace this request. Each result stays with its own capture.</p>
       <button type="button" className="btn-stop" onClick={onStop}>Stop analysis</button>
     </div>}
@@ -55,26 +86,10 @@ export function AptitudeAnswer({ entry, index, onRetry, onStop, onCapture }: {
     {entry.error && <div className={styles.error} role="alert">{entry.error}</div>}
     {result?.message && result.status !== 'error' && <div className={styles.notice}><p>{result.message}</p></div>}
 
-    {answer && result?.status === 'solved' && <>
-      <div className={styles.answerValue}>
-        <p className={styles.eyebrow}>Suggested answer</p>
-        {choices.length > 0 ? <h3>{choices.map((choice) => `${choice.label} — ${choice.text}`).join(' · ')}</h3>
-          : <h3>{answer.value ? `${answer.value}${answer.unit ? ` ${answer.unit}` : ''}` : answer.summary}</h3>}
-        {answer.summary && <p>{answer.summary}</p>}
-      </div>
-      <section className={styles.explanation} aria-label="Worked explanation">
-        <h3>How to solve it</h3>
-        <ol>{answer.workedExplanation.map((step, i) => <li key={i}>{step}</li>)}</ol>
-      </section>
-      <section className={styles.verification} aria-label="Answer check">
-        <h3>{result.verification.outcome === 'passed' ? 'Check passed' : result.verification.outcome === 'disagreed' ? 'Check needs review' : 'Check'}</h3>
-        <p className={styles.muted}>{result.verification.method === 'arithmetic' ? 'Arithmetic verification' : result.verification.method === 'source_review' ? 'Review against captured evidence' : 'No independent check was available.'}</p>
-        {result.verification.notes.length > 0 && <ul>{result.verification.notes.map((note, i) => <li key={i}>{note}</li>)}</ul>}
-      </section>
-    </>}
+    {comparison ? <AptitudeComparison comparison={comparison}>{suggestedAnswer}</AptitudeComparison> : suggestedAnswer}
 
     {question?.missingEvidence.length ? <section className={styles.notice} aria-label="Missing question content"><h3>Include in your next capture</h3><ul>{question.missingEvidence.map((item, i) => <li key={i}>{item}</li>)}</ul></section> : null}
-    {result?.status === 'needs_capture' && <button type="button" className="btn-signal" onClick={onCapture}>Capture a complete view</button>}
+    {(result?.status === 'needs_capture' || comparison?.candidates.some((candidate) => candidate.observation?.status === 'needs_capture')) && <button type="button" className="btn-signal" onClick={onCapture}>Capture a complete view</button>}
 
     <details className={styles.evidence} open={!answer && entry.status !== 'analyzing'}>
       <summary>What was captured & read</summary>
@@ -88,6 +103,6 @@ export function AptitudeAnswer({ entry, index, onRetry, onStop, onCapture }: {
       </div>}
       {result?.model && <p className={styles.muted}>Analyzed with {result.model} · Service time {(result.durationMs / 1000).toFixed(1)} s</p>}
     </details>
-    {entry.status !== 'analyzing' && <div className={styles.buttonRow}><button type="button" className="btn-ghost" onClick={onRetry}>Retry this capture</button></div>}
+    {entry.status !== 'analyzing' && <div className={styles.buttonRow}><button type="button" className="btn-ghost" onClick={onRetry}>Retry this capture</button>{retryStrategy && retryStrategy !== entry.strategy && <p className={styles.muted}>This retry uses {aptitudeStrategyLabel(retryStrategy)}.</p>}</div>}
   </article>
 }

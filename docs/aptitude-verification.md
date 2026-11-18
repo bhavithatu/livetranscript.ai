@@ -7,11 +7,11 @@ Implementation branch: `codex/aptitude-mode`, based on
 
 | Check | Result | Scope |
 | --- | --- | --- |
-| Full unit suite, Node 22, at most four workers | 1,142 tests passed across 164 files | Existing application and new aptitude/capture/navigation tests |
+| Full unit suite, Node 22, at most four workers | 1,198 tests passed across 168 files | Existing application, aptitude/capture/navigation, multi-model selection and UI/session tests |
 | TypeScript | Passed | Full project `tsc --noEmit` |
 | ESLint | Zero errors; two existing unused-variable warnings | Existing `lib/transcription/recovery.test.ts` warnings |
 | Next production build | Passed | New `/tools` page and `/api/aptitude/analyze` route included |
-| Offline aptitude evaluation | 10 tests passed; live/preparation opt-ins skipped | Scoring, fixture rendering, manifest and evaluation mechanics |
+| Offline aptitude evaluation | 23 tests passed; live/preparation opt-ins skipped | Scoring, fixture rendering, manifest, comparison budgets, failure-inclusive metrics and false consensus |
 | Fixture preparation | 12 PNGs and a manifest generated; preparation test passed | Original synthetic questions; all rendered images reviewed |
 | Browser workflow | Results and artifacts are recorded in [PR #52 checks](https://github.com/bhavithatu/livetranscript.ai/pull/52/checks) | Actual application with explicit provider and screen-source stubs |
 | Live provider accuracy/latency | Not run | No provider credential is available in this workspace |
@@ -21,6 +21,21 @@ The first uncapped local unit run hit a five-second timeout in an existing large
 remote-frame round-trip test under resource contention. The complete suite passed
 with four workers; the test assertion and timeout were not weakened. CI uses the
 same worker cap.
+
+## Multi-model comparison
+
+The comparison enhancement adds independent parallel candidates, deterministic
+source/option matching, explicit disagreement/insufficient states, and separate
+single/comparison history entries. Unit coverage includes malformed answers,
+conflicting source evidence, remapped option IDs, a wrong agreeing majority,
+timeouts, cancellation, stale mode callbacks and response-strategy mismatch.
+
+The browser workflow additionally checks two-model agreement, a one-to-one tie,
+one usable answer plus a timeout, and a three-model majority. Its sample responses
+are explicitly labeled in the screen preview; they are not live model outputs.
+All four browser response fixtures were independently parsed with the real
+runtime contract before publication. The workflow captures the actual comparison
+panel and full workspace in desktop/mobile light and dark layouts.
 
 The local browser runner could not launch Chromium because the workspace denied
 its socket operation. The connected cloud browser could not reach the local

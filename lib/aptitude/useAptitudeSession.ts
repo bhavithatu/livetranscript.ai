@@ -7,6 +7,7 @@ import {
   type AptitudeCategorySelection,
   type AptitudeRequest,
   type AptitudeResult,
+  type AptitudeStrategy,
 } from './schema'
 
 export const APTITUDE_HISTORY_LIMIT = 12
@@ -16,6 +17,7 @@ export type AptitudeSessionEntry = {
   id: string
   capture: AptitudeCapture
   category: AptitudeCategorySelection
+  strategy: AptitudeStrategy
   questionVersion: number
   status: 'analyzing' | 'complete' | 'cancelled' | 'error'
   result: AptitudeResult | null
@@ -67,7 +69,7 @@ export function useAptitudeSession() {
     const controller = new AbortController()
     const request: ActiveRequest = {
       id: entry.id,
-      version: entry.questionVersion + 1,
+      version: Math.max(entry.questionVersion, ...entriesRef.current.filter((item) => item.capture.id === entry.capture.id).map((item) => item.questionVersion)) + 1,
       generation: generation.current,
       controller,
       timer: null,
@@ -75,7 +77,7 @@ export function useAptitudeSession() {
     active.current = request
     const startedAt = Date.now()
     update((items) => items.map((item) => item.id === entry.id
-      ? { ...item, category: entry.category, questionVersion: request.version, status: 'analyzing', result: null, error: null, startedAt, finishedAt: null, elapsedMs: null }
+      ? { ...item, category: entry.category, strategy: entry.strategy, questionVersion: request.version, status: 'analyzing', result: null, error: null, startedAt, finishedAt: null, elapsedMs: null }
       : item))
     const isCurrent = () => active.current === request && generation.current === request.generation && !controller.signal.aborted
     request.timer = setTimeout(() => {
@@ -93,6 +95,7 @@ export function useAptitudeSession() {
       questionVersion: request.version,
       image: entry.capture.image,
       category: entry.category,
+      ...(entry.strategy === 'compare' ? { strategy: 'compare' as const } : {}),
     }
     try {
       const response = await fetch('/api/aptitude/analyze', {
@@ -116,6 +119,9 @@ export function useAptitudeSession() {
       if (result.captureId !== body.captureId || result.questionVersion !== body.questionVersion) {
         throw new Error('The response did not match this capture. Retry this question.')
       }
+      if ((entry.strategy === 'compare') !== Boolean(result.comparison)) {
+        throw new Error('The response did not match the selected analysis mode. Retry this capture.')
+      }
       if (!isCurrent()) return
       const finishedAt = Date.now()
       update((items) => items.map((item) => item.id === entry.id && item.questionVersion === request.version
@@ -133,34 +139,47 @@ export function useAptitudeSession() {
     }
   }, [stop, update])
 
-  const analyze = useCallback(async (capture: AptitudeCapture, category: AptitudeCategorySelection = 'auto') => {
+  const addEntry = useCallback((capture: AptitudeCapture, category: AptitudeCategorySelection, strategy: AptitudeStrategy) => {
+    // A second strategy retains the original analysis instead of relabeling it.
+    // Screenshot identity stays unchanged; the history entry has its own ID.
+    const entry: AptitudeSessionEntry = {
+      id: entriesRef.current.some((item) => item.id === capture.id) ? crypto.randomUUID() : capture.id,
+      capture, category, strategy, questionVersion: 0, status: 'analyzing',
+      result: null, error: null, startedAt: Date.now(), finishedAt: null, elapsedMs: null,
+    }
+    update((items) => [...items, entry].slice(-APTITUDE_HISTORY_LIMIT))
+    return entry
+  }, [update])
+
+  const analyze = useCallback(async (capture: AptitudeCapture, category: AptitudeCategorySelection = 'auto', strategy: AptitudeStrategy = 'single') => {
     // Screen re-selection and auto resume can produce a fresh ID for identical
-    // bytes. Reuse only the exact image and category, never a perceptual hash.
+    // bytes. Reuse the exact image, category and strategy, never a perceptual hash.
     // Explicit Retry always calls run and therefore remains a fresh request.
     const reusable = [...entriesRef.current].reverse().find((item) => item.capture.image === capture.image
-      && item.category === category && (item.status === 'analyzing' || item.status === 'complete'))
+      && item.category === category && item.strategy === strategy && (item.status === 'analyzing' || item.status === 'complete'))
     if (reusable) {
       if (active.current && active.current.id !== reusable.id) stop()
       setCurrentId(reusable.id)
       return
     }
-    const existing = entriesRef.current.find((item) => item.id === capture.id)
-    const entry: AptitudeSessionEntry = existing ? { ...existing, category } : {
-      id: capture.id, capture, category, questionVersion: 0, status: 'analyzing',
-      result: null, error: null, startedAt: Date.now(), finishedAt: null, elapsedMs: null,
-    }
-    if (!existing) {
-      // Keep a bounded set of images in this tab. No screenshot is written to storage.
-      update((items) => [...items, entry].slice(-APTITUDE_HISTORY_LIMIT))
-    }
+    const existing = entriesRef.current.find((item) => item.capture.id === capture.id && item.capture.image === capture.image
+      && item.category === category && item.strategy === strategy)
+    const entry = existing ?? addEntry(capture, category, strategy)
     setCurrentId(entry.id)
     await run(entry)
-  }, [run, stop, update])
+  }, [addEntry, run, stop])
 
-  const retry = useCallback(async (id: string, category?: AptitudeCategorySelection) => {
+  const retry = useCallback(async (id: string, category?: AptitudeCategorySelection, strategy?: AptitudeStrategy) => {
     const entry = entriesRef.current.find((item) => item.id === id)
-    if (entry) await run({ ...entry, category: category ?? entry.category })
-  }, [run])
+    if (!entry) return
+    const requestedStrategy = strategy ?? entry.strategy
+    if (requestedStrategy !== entry.strategy) {
+      const replacement = addEntry(entry.capture, category ?? entry.category, requestedStrategy)
+      setCurrentId((current) => current === id ? replacement.id : current)
+      setSelectedId((selected) => selected === id ? replacement.id : selected)
+      await run(replacement)
+    } else await run({ ...entry, category: category ?? entry.category })
+  }, [addEntry, run])
 
   const clear = useCallback(() => {
     stop()

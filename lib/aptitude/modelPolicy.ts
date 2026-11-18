@@ -15,7 +15,7 @@ export class AptitudeServiceError extends Error {
 }
 export function aptitudeModel(id: string): AptitudeModel {
   const candidate = APTITUDE_MODELS.find(item => item.id === id)
-  if (!candidate) throw new AptitudeServiceError('APTITUDE_MODEL or APTITUDE_FALLBACK_MODELS names an unsupported image/structured-output model. Use an entry from the aptitude model allowlist.', 503, 'MODEL_CONFIGURATION')
+  if (!candidate) throw new AptitudeServiceError('The aptitude model configuration names an unsupported image/structured-output model. Use an entry from the aptitude model allowlist.', 503, 'MODEL_CONFIGURATION')
   return candidate
 }
 export function providerKey(candidate: AptitudeModel, env: AptitudeEnvironment): string | undefined {
@@ -28,6 +28,17 @@ export function configuredAptitudeModels(env: AptitudeEnvironment = process.env)
   const candidates = ids.map(aptitudeModel)
   for (const candidate of candidates) {
     if (!providerKey(candidate, env)) throw new AptitudeServiceError(`Aptitude analysis is unavailable. Configure ${candidate.provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'OPENAI_API_KEY'} on the server for ${candidate.id}, or choose a configured APTITUDE_MODEL.`, 503, 'PROVIDER_UNAVAILABLE')
+  }
+  return candidates
+}
+
+export const DEFAULT_APTITUDE_COMPARISON_MODELS = ['anthropic:claude-sonnet-4-5', 'openai:gpt-4.1'] as const
+export function configuredAptitudeComparisonModels(env: AptitudeEnvironment = process.env): AptitudeModel[] {
+  const ids = (env.APTITUDE_COMPARISON_MODELS?.trim() || DEFAULT_APTITUDE_COMPARISON_MODELS.join(',')).split(',').map(value => value.trim()).filter(Boolean)
+  if (ids.length < 2 || ids.length > 3 || new Set(ids).size !== ids.length) throw new AptitudeServiceError('APTITUDE_COMPARISON_MODELS must name two or three distinct allowlisted models.', 503, 'MODEL_CONFIGURATION')
+  const candidates = ids.map(aptitudeModel)
+  for (const candidate of candidates) {
+    if (!providerKey(candidate, env)) throw new AptitudeServiceError(`Model comparison is unavailable. Configure ${candidate.provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'OPENAI_API_KEY'} on the server for ${candidate.id}, or adjust APTITUDE_COMPARISON_MODELS.`, 503, 'PROVIDER_UNAVAILABLE')
   }
   return candidates
 }

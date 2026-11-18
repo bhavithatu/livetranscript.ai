@@ -1,10 +1,13 @@
 /** Shared wire types. This module is safe to import from the browser. */
+import { selectAptitudeComparison } from './comparison'
+
 export const APTITUDE_CATEGORIES = [
   'numerical', 'data_interpretation', 'verbal', 'critical_reasoning', 'logical',
   'abstract', 'spatial', 'checking', 'situational_judgment', 'personality', 'unknown',
 ] as const
 export type AptitudeCategory = typeof APTITUDE_CATEGORIES[number]
 export type AptitudeCategorySelection = 'auto' | AptitudeCategory
+export type AptitudeStrategy = 'single' | 'compare'
 export const APTITUDE_CATEGORY_LABELS: Record<AptitudeCategory, string> = {
   numerical: 'Numerical reasoning', data_interpretation: 'Charts and tables',
   verbal: 'Verbal reasoning', critical_reasoning: 'Critical reasoning',
@@ -21,6 +24,8 @@ export type AptitudeRequest = {
   questionVersion: number
   image: string
   category: AptitudeCategorySelection
+  /** Absent means single; existing clients never opt into extra model calls. */
+  strategy?: AptitudeStrategy
 }
 export type AptitudeQuestion = {
   stem: string
@@ -52,6 +57,25 @@ export type AptitudeObservation = {
   answer: AptitudeAnswer | null
   message: string | null
 }
+export type AptitudeComparisonDecision = 'agreement' | 'majority' | 'disagreement' | 'insufficient'
+export type AptitudeComparisonCandidate = {
+  /** Configured provider:model identity; model below is the actual returned identity. */
+  modelId: string
+  model: string | null
+  provider: 'anthropic' | 'openai'
+  status: 'complete' | 'failed' | 'timed_out'
+  observation: AptitudeObservation | null
+  verification: AptitudeVerification | null
+  durationMs: number
+  error: string | null
+}
+export type AptitudeComparison = {
+  decision: AptitudeComparisonDecision
+  selectedModelId: string | null
+  agreementCount: number
+  notes: string[]
+  candidates: AptitudeComparisonCandidate[]
+}
 export type AptitudeResult = Omit<AptitudeObservation, 'status'> & {
   schemaVersion: 1
   captureId: string
@@ -63,16 +87,17 @@ export type AptitudeResult = Omit<AptitudeObservation, 'status'> & {
   model: string | null
   provider: 'anthropic' | 'openai' | null
   durationMs: number
+  comparison?: AptitudeComparison
 }
 
 export class AptitudeValidationError extends Error {
   constructor(message: string) { super(message); this.name = 'AptitudeValidationError' }
 }
 const fail = (message: string): never => { throw new AptitudeValidationError(message) }
-function object(value: unknown, name: string, keys: readonly string[]): Record<string, unknown> {
+function object(value: unknown, name: string, keys: readonly string[], optional: readonly string[] = []): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return fail(`${name} must be an object`)
   const item = value as Record<string, unknown>
-  if (Object.keys(item).some(key => !keys.includes(key)) || keys.some(key => !(key in item))) return fail(`${name} has unexpected or missing fields`)
+  if (Object.keys(item).some(key => !keys.includes(key)) || keys.some(key => !optional.includes(key) && !(key in item))) return fail(`${name} has unexpected or missing fields`)
   return item
 }
 function string(value: unknown, name: string, max = 8_000, nonempty = false): string {
@@ -106,11 +131,12 @@ function captureId(value: unknown): string {
 }
 
 export function parseAptitudeRequest(value: unknown): AptitudeRequest {
-  const item = object(value, 'Request', ['captureId', 'questionVersion', 'image', 'category'])
+  const item = object(value, 'Request', ['captureId', 'questionVersion', 'image', 'category', 'strategy'], ['strategy'])
   const image = string(item.image, 'screenshot', MAX_APTITUDE_IMAGE_CHARS, true)
   if (!/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(image)) return fail('Provide a PNG, JPEG, or WebP screenshot')
   return { captureId: captureId(item.captureId), questionVersion: version(item.questionVersion), image,
-    category: member(item.category, ['auto', ...APTITUDE_CATEGORIES], 'category') }
+    category: member(item.category, ['auto', ...APTITUDE_CATEGORIES], 'category'),
+    ...('strategy' in item ? { strategy: member<AptitudeStrategy>(item.strategy, ['single', 'compare'], 'analysis strategy') } : {}) }
 }
 
 function parseQuestion(value: unknown): AptitudeQuestion | null {
@@ -169,27 +195,71 @@ export function parseAptitudeObservation(value: unknown): AptitudeObservation {
   return result
 }
 
+function parseVerification(value: unknown): AptitudeVerification {
+  const check = object(value, 'Verification', ['method', 'outcome', 'notes'])
+  return { method: member(check.method, ['arithmetic', 'source_review', 'none'], 'verification method'),
+    outcome: member(check.outcome, ['passed', 'disagreed', 'not_run'], 'verification outcome'), notes: strings(check.notes, 'verification notes') }
+}
+
+export function parseAptitudeComparison(value: unknown): AptitudeComparison {
+  const item = object(value, 'Comparison', ['decision', 'selectedModelId', 'agreementCount', 'notes', 'candidates'])
+  if (!Array.isArray(item.candidates) || item.candidates.length < 2 || item.candidates.length > 3) return fail('Compare two or three distinct models')
+  const candidates = item.candidates.map(value => {
+    const candidate = object(value, 'Comparison candidate', ['modelId', 'model', 'provider', 'status', 'observation', 'verification', 'durationMs', 'error'])
+    const provider = member<'anthropic' | 'openai'>(candidate.provider, ['anthropic', 'openai'], 'comparison provider')
+    const modelId = string(candidate.modelId, 'comparison model ID', 200, true)
+    if (!modelId.startsWith(`${provider}:`) || !/^(?:anthropic|openai):[A-Za-z0-9._-]+$/.test(modelId)) return fail('Invalid comparison model ID')
+    const durationMs = finiteNumber(candidate.durationMs, 'comparison duration')
+    if (durationMs < 0 || durationMs > 3_600_000) return fail('Invalid comparison duration')
+    const parsed: AptitudeComparisonCandidate = { modelId, model: nullableString(candidate.model, 'comparison model', 200), provider,
+      status: member(candidate.status, ['complete', 'failed', 'timed_out'], 'comparison candidate status'),
+      observation: candidate.observation === null ? null : parseAptitudeObservation(candidate.observation),
+      verification: candidate.verification === null ? null : parseVerification(candidate.verification), durationMs,
+      error: nullableString(candidate.error, 'comparison error', 1_000) }
+    if (parsed.status === 'complete') {
+      if (!parsed.model?.trim() || !parsed.observation || !parsed.verification || parsed.error !== null) return fail('Invalid complete comparison candidate')
+      if (parsed.observation.status === 'solved' && parsed.verification.outcome === 'disagreed') return fail('A disagreed calculation cannot vote')
+    } else if (parsed.observation !== null || parsed.verification !== null || !parsed.error?.trim()) return fail('Invalid failed comparison candidate')
+    return parsed
+  })
+  if (new Set(candidates.map(candidate => candidate.modelId)).size !== candidates.length) return fail('Comparison model IDs must be distinct')
+  const agreementCount = finiteNumber(item.agreementCount, 'agreement count')
+  if (!Number.isInteger(agreementCount) || agreementCount < 0 || agreementCount > candidates.length) return fail('Invalid agreement count')
+  const comparison: AptitudeComparison = { decision: member(item.decision, ['agreement', 'majority', 'disagreement', 'insufficient'], 'comparison decision'),
+    selectedModelId: nullableString(item.selectedModelId, 'selected comparison model', 200), agreementCount, notes: strings(item.notes, 'comparison notes'), candidates }
+  const expected = selectAptitudeComparison(candidates).comparison
+  if (comparison.decision !== expected.decision || comparison.selectedModelId !== expected.selectedModelId || comparison.agreementCount !== expected.agreementCount) return fail('Comparison decision is inconsistent with its candidates')
+  return comparison
+}
+
 export function parseAptitudeResult(value: unknown): AptitudeResult {
-  const keys = ['schemaVersion', 'captureId', 'questionVersion', 'questionId', 'sourceHash', 'category', 'status', 'question', 'answer', 'message', 'verification', 'model', 'provider', 'durationMs']
-  const item = object(value, 'Aptitude result', keys)
+  const keys = ['schemaVersion', 'captureId', 'questionVersion', 'questionId', 'sourceHash', 'category', 'status', 'question', 'answer', 'message', 'verification', 'model', 'provider', 'durationMs', 'comparison']
+  const item = object(value, 'Aptitude result', keys, ['comparison'])
   if (item.schemaVersion !== 1) return fail('Unsupported result version')
   const sourceHash = string(item.sourceHash, 'source hash', 64)
   if (!/^[a-f0-9]{64}$/.test(sourceHash)) return fail('Invalid source hash')
   const questionId = nullableString(item.questionId, 'question ID', 64)
   if (questionId !== null && !/^[a-f0-9]{64}$/.test(questionId)) return fail('Invalid question ID')
-  const check = object(item.verification, 'Verification', ['method', 'outcome', 'notes'])
   const durationMs = finiteNumber(item.durationMs, 'duration')
   if (durationMs < 0 || durationMs > 3_600_000) return fail('Invalid duration')
   const result: AptitudeResult = {
     schemaVersion: 1, captureId: captureId(item.captureId), questionVersion: version(item.questionVersion), questionId, sourceHash,
     category: member(item.category, APTITUDE_CATEGORIES, 'category'), status: member(item.status, ['solved', 'needs_capture', 'ambiguous', 'unsupported', 'error'], 'status'),
     question: parseQuestion(item.question), answer: parseAnswer(item.answer), message: nullableString(item.message, 'message', 1_000),
-    verification: { method: member(check.method, ['arithmetic', 'source_review', 'none'], 'verification method'),
-      outcome: member(check.outcome, ['passed', 'disagreed', 'not_run'], 'verification outcome'), notes: strings(check.notes, 'verification notes') },
+    verification: parseVerification(item.verification),
     model: nullableString(item.model, 'model', 200), provider: item.provider === null ? null : member<'anthropic' | 'openai'>(item.provider, ['anthropic', 'openai'], 'provider'), durationMs,
+    ...('comparison' in item ? { comparison: parseAptitudeComparison(item.comparison) } : {}),
   }
   validateConsistency(result)
   if (result.status === 'solved' && (result.verification.outcome === 'disagreed' || !result.questionId || !result.model || !result.provider)) return fail('Invalid completed result')
+  if (result.comparison) {
+    const selected = result.comparison.candidates.find(candidate => candidate.modelId === result.comparison!.selectedModelId)
+    if (selected) {
+      if (result.status !== 'solved' || result.model !== selected.model || result.provider !== selected.provider || result.category !== selected.observation?.category ||
+        JSON.stringify(result.question) !== JSON.stringify(selected.observation?.question) || JSON.stringify(result.answer) !== JSON.stringify(selected.observation?.answer) ||
+        JSON.stringify(result.verification) !== JSON.stringify(selected.verification)) return fail('Selected comparison answer does not match its candidate')
+    } else if (result.status === 'solved' || result.answer !== null) return fail('An unresolved comparison cannot publish an answer')
+  }
   return result
 }
 

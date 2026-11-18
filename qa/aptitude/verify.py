@@ -7,6 +7,7 @@ an operating-system screen-picker certification. No paid API calls are made.
 """
 import asyncio
 import base64
+import copy
 import hashlib
 import json
 import os
@@ -84,11 +85,69 @@ def response_for(body, number=0, status='solved'):
             'provider': 'openai', 'model': 'browser-qa-stub', 'durationMs': 12}
 
 
+def comparison_response_for(body, decision):
+    """Owned practice question, explicit sample responses, no model claims.
+
+    Option IDs differ across providers on purpose. The wrong 20% response has a
+    valid calculation but uses the final value as its denominator, demonstrating
+    why the arithmetic badge cannot certify the chosen method.
+    """
+    base = response_for(body)
+    models = [('anthropic', 'claude-sonnet-4-5'), ('openai', 'gpt-4.1')]
+    if decision == 'majority':
+        models.append(('openai', 'gpt-4.1-mini'))
+    candidates = []
+    for index, (provider, model) in enumerate(models):
+        candidate = {'modelId': f'{provider}:{model}', 'provider': provider,
+                     'model': model, 'status': 'complete', 'durationMs': 0, 'error': None}
+        if decision == 'insufficient' and index == 1:
+            candidate.update({'status': 'timed_out', 'model': None, 'observation': None,
+                              'verification': None, 'error': 'Sample timeout: this model did not return an answer.'})
+            candidates.append(candidate)
+            continue
+        observation = {key: copy.deepcopy(base[key]) for key in ['category', 'status', 'question', 'answer', 'message']}
+        for option in observation['question']['options']:
+            option['id'] = f'{index}-{option["id"]}'
+        wrong = (decision == 'disagreement' and index == 1) or (decision == 'majority' and index == 2)
+        observation['answer']['selectedOptionIds'] = [f'{index}-A' if wrong else f'{index}-B']
+        if wrong:
+            observation['answer'].update({
+                'value': '20', 'summary': 'The increase is 20%.',
+                'workedExplanation': ['The increase is 90 − 72 = 18.', 'Divide by the final value, 90, and multiply by 100 to get 20%.'],
+                'calculation': {'expression': '(90-72)/90*100', 'claimedValue': 20, 'decimalPlaces': None},
+            })
+        candidate.update({'observation': observation, 'verification': {
+            'method': 'arithmetic', 'outcome': 'passed',
+            'notes': ['The stated calculation is consistent. The choice of formula still needs review.'],
+        }})
+        candidates.append(candidate)
+    resolved = decision in ['agreement', 'majority']
+    selected = candidates[0] if resolved else None
+    result = copy.deepcopy(base)
+    if selected:
+        result.update(copy.deepcopy(selected['observation']))
+        result.update({'model': selected['model'], 'provider': selected['provider'],
+                       'verification': copy.deepcopy(selected['verification'])})
+    else:
+        result.update({'status': 'ambiguous', 'answer': None, 'model': None, 'provider': None,
+                       'message': 'Review the individual answers; this comparison does not support a recommendation.',
+                       'verification': {'method': 'none', 'outcome': 'not_run', 'notes': []}})
+    result['durationMs'] = 0
+    result['comparison'] = {
+        'decision': decision, 'selectedModelId': selected['modelId'] if selected else None,
+        'agreementCount': 2 if resolved else 1,
+        'notes': ['Sample model responses for this screen preview. No live provider calls or model latency benchmark.',
+                  'Agreement does not prove correctness. Models may share the same reading or reasoning mistake.'],
+        'candidates': candidates,
+    }
+    return result
+
+
 async def main():
     report = {'kind': 'aptitude-browser-integration', 'liveModel': False, 'nativePicker': False,
               'checks': [], 'layouts': [], 'browserErrors': [], 'stubErrors': []}
     requests = []
-    state = {'number': 0, 'status': 'solved', 'delay': 0}
+    state = {'number': 0, 'status': 'solved', 'delay': 0, 'comparison': 'agreement'}
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch(executable_path=os.environ.get('CHROMIUM_PATH') or None, args=['--no-sandbox'])
         page = await browser.new_page(viewport={'width': 1440, 'height': 1000})
@@ -139,17 +198,23 @@ async def main():
 
             async def serve(route):
                 body = route.request.post_data_json
-                assert set(body) == {'captureId', 'questionVersion', 'image', 'category'}
+                assert set(body) in [
+                    {'captureId', 'questionVersion', 'image', 'category'},
+                    {'captureId', 'questionVersion', 'image', 'category', 'strategy'},
+                ]
+                assert body.get('strategy', 'single') in ['single', 'compare']
                 assert body['image'].startswith('data:image/')
-                requests.append({'captureId': body['captureId'], 'version': body['questionVersion'], 'number': state['number'], 'at': time.monotonic()})
+                requests.append({'captureId': body['captureId'], 'version': body['questionVersion'], 'number': state['number'], 'strategy': body.get('strategy', 'single'), 'at': time.monotonic()})
                 mode, number, delay = state['status'], state['number'], state['delay']
+                comparison = state['comparison']
                 if delay:
                     await asyncio.sleep(delay)
                 try:
                     if mode == 'error':
                         await route.fulfill(status=502, json={'error': 'Synthetic provider interruption. Retry this capture.'})
                     else:
-                        await route.fulfill(status=200, json=response_for(body, number, mode))
+                        result = comparison_response_for(body, comparison) if body.get('strategy') == 'compare' else response_for(body, number, mode)
+                        await route.fulfill(status=200, json=result)
                 except PlaywrightError as error:
                     # Retired requests may fail fulfillment after an intentional
                     # abort. Do not swallow fixture/JSON errors or other route
@@ -241,6 +306,80 @@ async def main():
             assert (await page.evaluate('window.__aptitudeScreen.calls()'))['microphone'] == 0
             report['checks'].append('Pause stops requests; unchanged recapture reuses exact image; Retry forces analysis; Stop releases tracks')
 
+            await page.get_by_role('button', name='Clear captures and history', exact=True).click()
+            await expect(page.get_by_role('heading', name='Start with the question.', exact=True)).to_be_visible()
+            assert await page.get_by_alt_text('Question screenshot ready for analysis').count() == 0
+            await expect(history_select).to_have_count(0)
+            report['checks'].append('Clear removes retained captures and answers')
+
+            # These are real product screens with explicit synthetic responses.
+            # Switching mode must not send the image before the user's next action.
+            state['number'] = 0
+            await page.get_by_role('button', name='Try a practice question', exact=True).click()
+            strategy = page.get_by_role('combobox', name='Analysis mode', exact=True)
+            await expect(strategy).to_have_value('single')
+            count = len(requests)
+            await strategy.select_option('compare')
+            await expect(strategy).to_have_value('compare')
+            await expect(page.get_by_role('heading', name='Ready to compare this capture.', exact=True)).to_be_visible()
+            await asyncio.sleep(.5)
+            assert len(requests) == count, 'Selecting Compare models unexpectedly submitted a screenshot'
+            await click_for_request(page.get_by_role('button', name='Analyze this capture', exact=True))
+            comparison = page.get_by_role('region', name='Model comparison', exact=True)
+            await expect(comparison.get_by_role('heading', name='Models agree', exact=True)).to_be_visible()
+            await expect(page.get_by_role('heading', name='B — 25%', exact=True)).to_be_visible()
+            await expect(comparison.get_by_role('article')).to_have_count(2)
+            assert requests[-1]['strategy'] == 'compare'
+            report['checks'].append('Explicit comparison selection makes no call; two agreeing model answers support the visible recommendation')
+
+            # A mode is part of history/cache identity. Looking at single mode
+            # cannot accidentally reuse a comparison response or rewrite it.
+            count = len(requests)
+            await strategy.select_option('single')
+            await asyncio.sleep(.2)
+            assert len(requests) == count, 'Switching to Single model unexpectedly made a request'
+            await click_for_request(page.get_by_role('button', name='Analyze this capture', exact=True))
+            await expect(page.get_by_role('heading', name='B — 25%', exact=True)).to_be_visible()
+            await expect(comparison).to_have_count(0)
+            assert requests[-1]['strategy'] == 'single'
+            await expect(history_options).to_have_count(2)
+            mode_history = await history_options.all_text_contents()
+            assert any('Single model' in text for text in mode_history) and any('Compare models' in text for text in mode_history), mode_history
+            count = len(requests)
+            await strategy.select_option('compare')
+            await page.get_by_role('button', name='Analyze this capture', exact=True).click()
+            await expect(comparison.get_by_role('heading', name='Models agree', exact=True)).to_be_visible()
+            assert len(requests) == count, 'Returning to the same completed comparison should reuse only that strategy'
+            report['checks'].append('Single and comparison analyses remain distinct in history and exact-image reuse')
+
+            state['comparison'] = 'disagreement'
+            await click_for_request(page.get_by_role('button', name='Retry this capture', exact=True))
+            await expect(comparison.get_by_role('heading', name='Models disagree', exact=True)).to_be_visible()
+            assert await page.get_by_text('Suggested answer', exact=True).count() == 0
+            await expect(comparison.get_by_role('article', name='anthropic:claude-sonnet-4-5', exact=True).get_by_text('B — 25%', exact=True)).to_be_visible()
+            await expect(comparison.get_by_role('article', name='openai:gpt-4.1', exact=True).get_by_text('A — 20%', exact=True)).to_be_visible()
+            await page.set_viewport_size({'width': 1440, 'height': 1000})
+            if await page.evaluate('document.documentElement.classList.contains("lt-dark")'):
+                await page.get_by_role('button', name='Switch to light mode', exact=True).click()
+            await comparison.screenshot(path=str(OUT / 'aptitude-comparison-disagreement.png'))
+            report['checks'].append('A one-to-one split withholds recommendation and exposes both explanations')
+
+            state['comparison'] = 'insufficient'
+            await click_for_request(page.get_by_role('button', name='Retry this capture', exact=True))
+            await expect(comparison.get_by_role('heading', name='Comparison incomplete', exact=True)).to_be_visible()
+            assert await page.get_by_text('Suggested answer', exact=True).count() == 0
+            await expect(comparison.get_by_text('Timed out', exact=True)).to_be_visible()
+            report['checks'].append('One usable answer plus a timed-out model is incomplete and cannot publish a recommendation')
+
+            state['comparison'] = 'majority'
+            await click_for_request(page.get_by_role('button', name='Retry this capture', exact=True))
+            await expect(comparison.get_by_role('heading', name='Majority agreement', exact=True)).to_be_visible()
+            await expect(page.get_by_role('heading', name='B — 25%', exact=True)).to_be_visible()
+            await expect(comparison.get_by_role('article')).to_have_count(3)
+            await expect(comparison.get_by_role('article', name='openai:gpt-4.1-mini', exact=True).get_by_text('A — 20%', exact=True)).to_be_visible()
+            await expect(comparison.get_by_text('Sample model responses for this screen preview. No live provider calls or model latency benchmark.', exact=True)).to_be_visible()
+            report['checks'].append('Two-to-one agreement is labeled as a majority; dissent and arithmetic-check limits remain visible')
+
             for theme in ['light', 'dark']:
                 is_dark = await page.evaluate('document.documentElement.classList.contains("lt-dark")')
                 if is_dark != (theme == 'dark'):
@@ -255,13 +394,15 @@ async def main():
                     if width in [375, 1440]:
                         await page.evaluate('window.scrollTo(0, 0)')
                         await page.screenshot(path=str(OUT / f'aptitude-{theme}-{width}.png'), full_page=True)
+                        await comparison.screenshot(path=str(OUT / f'aptitude-comparison-{theme}-{width}.png'))
             report['checks'].append('Six light/dark responsive layouts without horizontal overflow')
 
             await page.get_by_role('button', name='Clear captures and history', exact=True).click()
             await expect(page.get_by_role('heading', name='Start with the question.', exact=True)).to_be_visible()
             assert await page.get_by_alt_text('Question screenshot ready for analysis').count() == 0
             await expect(history_select).to_have_count(0)
-            report['checks'].append('Clear removes retained captures and answers')
+            await expect(comparison).to_have_count(0)
+            report['checks'].append('Clear also removes multi-model candidates and comparison history')
             assert not report['browserErrors'], report['browserErrors']
             assert not report['stubErrors'], report['stubErrors']
             report['passed'] = True

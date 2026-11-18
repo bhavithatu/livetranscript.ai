@@ -33,4 +33,11 @@ describe('aptitude wire contract', () => {
     for (const input of [{ ...TEST_REQUEST, image: 'https://example.test/image.png' }, { ...TEST_REQUEST, questionVersion: -1 }, { ...TEST_REQUEST, captureId: '../x' }, { ...TEST_REQUEST, image: 'x'.repeat(MAX_APTITUDE_IMAGE_CHARS + 1) }]) expect(() => parseAptitudeRequest(input)).toThrow()
     expect(() => parseAptitudeResult({ ...solvedObservation(), captureId: 'a' })).toThrow()
   })
+  it('requires explicit comparison and preserves the request shape for old single clients', () => {
+    expect(parseAptitudeRequest(TEST_REQUEST)).not.toHaveProperty('strategy')
+    expect(parseAptitudeRequest({ ...TEST_REQUEST, strategy: 'single' }).strategy).toBe('single')
+    expect(parseAptitudeRequest({ ...TEST_REQUEST, strategy: 'compare' }).strategy).toBe('compare')
+    expect(() => parseAptitudeRequest({ ...TEST_REQUEST, strategy: 'automatic-race' })).toThrow()
+    expect(() => parseAptitudeRequest({ ...TEST_REQUEST, strategy: null })).toThrow()
+  })
 })

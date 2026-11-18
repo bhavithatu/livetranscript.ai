@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AptitudeCapture } from './captureDetector'
 import type { AptitudeRequest, AptitudeResult } from './schema'
 import { APTITUDE_HISTORY_LIMIT, APTITUDE_REQUEST_TIMEOUT_MS, useAptitudeSession } from './useAptitudeSession'
+import { comparisonFixture } from '@/components/aptitude/comparisonTestFixtures'
 
 function capture(id: string): AptitudeCapture {
   return { id, image: `data:image/png;base64,${btoa(id)}`, capturedAt: Date.now(), width: 100, height: 100, sourceHash: id }
@@ -40,6 +41,59 @@ async function complete(index: number, value: unknown = answer(pending[index].re
 }
 
 describe('aptitude request lifecycle', () => {
+  it('separates single and comparison requests and preserves their own results in history', async () => {
+    const { result } = renderHook(useAptitudeSession)
+    const screenshot = capture('same-question')
+    act(() => { void result.current.analyze(screenshot) })
+    expect(pending[0].request.strategy).toBeUndefined()
+    await complete(0)
+    const original = result.current.current!
+    act(() => { void result.current.analyze(screenshot, 'auto', 'compare') })
+    expect(pending[1].request).toEqual({ ...pending[0].request, questionVersion: 2, strategy: 'compare' })
+    expect(result.current.entries).toHaveLength(2)
+    expect(result.current.entries[0]).toBe(original)
+    expect(result.current.current?.id).not.toBe(original.id)
+    expect(result.current.current?.strategy).toBe('compare')
+    act(() => { void result.current.analyze({ ...screenshot, id: 'same-bytes-again' }, 'auto', 'compare') })
+    expect(pending).toHaveLength(2)
+    await complete(1, comparisonFixture(answer(pending[1].request)))
+    expect(result.current.current?.result?.comparison?.decision).toBe('agreement')
+    act(() => { void result.current.analyze({ ...screenshot, id: 'same-complete-comparison' }, 'auto', 'compare') })
+    expect(pending).toHaveLength(2)
+    act(() => { void result.current.analyze(screenshot, 'auto', 'single') })
+    expect(pending).toHaveLength(2)
+    expect(result.current.current?.id).toBe(original.id)
+    expect(result.current.current?.strategy).toBe('single')
+    expect(result.current.current?.result?.comparison).toBeUndefined()
+  })
+
+  it('retries pinned history with the chosen strategy without relabeling the saved result or moving the latest question', async () => {
+    const { result } = renderHook(useAptitudeSession)
+    act(() => { void result.current.analyze(capture('first')) })
+    await complete(0)
+    act(() => { result.current.pin('first'); void result.current.analyze(capture('latest')) })
+    await complete(1)
+    act(() => { void result.current.retry('first', 'numerical', 'compare') })
+    expect(pending[2].request).toMatchObject({ captureId: 'first', questionVersion: 2, strategy: 'compare' })
+    expect(result.current.entries[0].strategy).toBe('single')
+    expect(result.current.entries[0].result?.answer).toBeTruthy()
+    expect(result.current.selected?.strategy).toBe('compare')
+    expect(result.current.selected?.id).not.toBe('first')
+    expect(result.current.current?.id).toBe('latest')
+    await complete(2, comparisonFixture(answer(pending[2].request)))
+    act(() => { void result.current.retry(result.current.selected!.id) })
+    expect(pending[3].request).toMatchObject({ captureId: 'first', questionVersion: 3, strategy: 'compare' })
+    expect(result.current.entries).toHaveLength(3)
+  })
+
+  it('rejects a single answer returned for a comparison request', async () => {
+    const { result } = renderHook(useAptitudeSession)
+    act(() => { void result.current.analyze(capture('compare'), 'auto', 'compare') })
+    await complete(0)
+    expect(result.current.current?.result).toBeNull()
+    expect(result.current.current?.error).toMatch(/selected analysis mode/)
+  })
+
   it('coalesces identical pending and completed images while keeping explicit retries fresh', async () => {
     const { result } = renderHook(useAptitudeSession)
     const first = capture('first')
