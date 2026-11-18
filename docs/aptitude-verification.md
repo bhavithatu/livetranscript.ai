@@ -13,7 +13,7 @@ Implementation branch: `codex/aptitude-mode`, based on
 | Next production build | Passed | New `/tools` page and `/api/aptitude/analyze` route included |
 | Offline aptitude evaluation | 10 tests passed; live/preparation opt-ins skipped | Scoring, fixture rendering, manifest and evaluation mechanics |
 | Fixture preparation | 12 PNGs and a manifest generated; preparation test passed | Original synthetic questions; all rendered images reviewed |
-| Browser workflow | Added to the Quality workflow; result pending | Actual application with explicit provider and screen-source stubs |
+| Browser workflow | Results and artifacts are recorded in [PR #52 checks](https://github.com/bhavithatu/livetranscript.ai/pull/52/checks) | Actual application with explicit provider and screen-source stubs |
 | Live provider accuracy/latency | Not run | No provider credential is available in this workspace |
 | Native source picker and real-device capture | Not run | Requires an interactive supported device/browser |
 
@@ -26,6 +26,14 @@ The local browser runner could not launch Chromium because the workspace denied
 its socket operation. The connected cloud browser could not reach the local
 server. Neither outcome is counted as a successful UI check. The new CI browser
 job runs independently and stores the report and screenshots as an artifact.
+
+The first CI attempt exposed runner-image drift: `ubuntu-latest` had moved to
+Ubuntu 26.04, which the pinned Playwright 1.55 runtime could not install on. All
+three affected browser jobs now pin Ubuntu 24.04. The first actual Aptitude
+browser run then exposed an exact-label selector issue in the test: Playwright
+included nested option text when reading a wrapping label. The history check now
+uses the region's unique combobox and verifies both exact capture IDs in order.
+Neither issue was hidden by relaxing the application assertions.
 
 ## Reproduce
 

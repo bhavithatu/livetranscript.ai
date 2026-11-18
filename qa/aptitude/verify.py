@@ -180,9 +180,19 @@ async def main():
             await expect(page.get_by_text('Screenshot ready. Select Analyze this capture when you are ready.', exact=True)).to_be_visible()
             await click_for_request(page.get_by_role('button', name='Analyze this capture', exact=True))
             await expect(page.get_by_role('heading', name='B — 25%', exact=True)).to_be_visible()
-            choices = await page.get_by_label('View a question', exact=True).locator('option').evaluate_all('(items)=>items.map(x=>x.value).filter(Boolean)')
-            assert len(choices) == 2
-            await page.get_by_label('View a question', exact=True).select_option(choices[-1])
+            # Playwright's exact label matcher includes all descendant option
+            # text from this wrapping label. Scope to the history's unique
+            # native combobox instead; evaluate_all on a missing label locator
+            # silently returned [], even while the UI correctly held two items.
+            history_select = page.get_by_role('region', name='Question history', exact=True).get_by_role('combobox')
+            await expect(history_select).to_have_count(1)
+            history_options = history_select.locator('option[value]:not([value=""])')
+            choices = await history_options.evaluate_all('(items)=>items.map(x=>x.value)')
+            expected_choices = [requests[-1]['captureId'], requests[0]['captureId']]
+            report['uploadedHistory'] = {'actualCaptureIds': choices, 'expectedCaptureIds': expected_choices}
+            await expect(history_options).to_have_count(2)
+            assert choices == expected_choices, f'History must contain the uploaded and original captures in newest-first order: {report["uploadedHistory"]}'
+            await history_select.select_option(choices[-1])
             await expect(page.get_by_role('button', name='Follow latest', exact=True)).to_be_visible()
             report['checks'].append('Real image upload, bounded question history and explicit history pinning')
 
@@ -243,13 +253,14 @@ async def main():
                     await expect(page.get_by_role('button', name='Upload screenshot', exact=True)).to_be_visible()
                     report['layouts'].append({'theme': theme, 'width': width, 'passed': True})
                     if width in [375, 1440]:
+                        await page.evaluate('window.scrollTo(0, 0)')
                         await page.screenshot(path=str(OUT / f'aptitude-{theme}-{width}.png'), full_page=True)
             report['checks'].append('Six light/dark responsive layouts without horizontal overflow')
 
             await page.get_by_role('button', name='Clear captures and history', exact=True).click()
             await expect(page.get_by_role('heading', name='Start with the question.', exact=True)).to_be_visible()
             assert await page.get_by_alt_text('Question screenshot ready for analysis').count() == 0
-            assert await page.get_by_label('View a question', exact=True).count() == 0
+            await expect(history_select).to_have_count(0)
             report['checks'].append('Clear removes retained captures and answers')
             assert not report['browserErrors'], report['browserErrors']
             assert not report['stubErrors'], report['stubErrors']
@@ -258,6 +269,7 @@ async def main():
             report['passed'] = False
             report['failure'] = str(error)
             try:
+                await page.evaluate('window.scrollTo(0, 0)')
                 await page.screenshot(path=str(OUT / 'failure.png'), full_page=True)
             except PlaywrightError as screenshot_error:
                 report['failureScreenshotError'] = str(screenshot_error)
