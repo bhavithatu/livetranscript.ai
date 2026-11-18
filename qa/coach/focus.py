@@ -11,7 +11,11 @@ with sync_playwright() as p:
   page=browser.new_page(viewport={'width':1440,'height':1000})
   errors=[]; page.on('pageerror',lambda e:errors.append(str(e)))
   page.goto('http://127.0.0.1:4180/live.html',wait_until='networkidle')
-  assert page.get_by_role('link',name='AI workspace',exact=True).count()==0 or not page.get_by_role('link',name='AI workspace',exact=True).first.is_visible()
+  workspace=page.get_by_role('navigation',name='Workspace',exact=True)
+  for label,href in [('AI workspace','/copilot'),('Aptitude','/copilot?mode=aptitude'),('Explore all tools','/tools')]:
+    destination=workspace.get_by_role('link',name=label,exact=True)
+    assert destination.is_visible(), f'{label} must be visible in desktop Workspace navigation'
+    assert destination.get_attribute('href')==href, f'Incorrect destination for {label}'
   assert page.get_by_role('link',name='Transcripts',exact=True).first.is_visible()
   page.get_by_role('checkbox',name='I have permission',exact=False).check()
   page.screenshot(path=str(ROOT/'setup-1440.png'),full_page=True)
