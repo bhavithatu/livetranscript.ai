@@ -52,11 +52,25 @@ describe('WorkspaceShell navigation', () => {
     render(<WorkspaceShell active="interview" onNavigate={event => event.preventDefault()}><main>Active capture</main></WorkspaceShell>)
     const trigger = screen.getByLabelText('Open workspace navigation')
     fireEvent.click(trigger)
-    fireEvent.click(within(screen.getByRole('navigation', { name: 'Mobile workspace' })).getByText('More tools'))
     fireEvent.click(within(screen.getByRole('navigation', { name: 'Mobile workspace' })).getByRole('link', { name: 'AI workspace' }))
     expect(trigger.closest('details')!.open).toBe(true)
     fireEvent.pointerDown(screen.getByText('Active capture'))
     expect(trigger.closest('details')!.open).toBe(false)
+  })
+
+  it('exposes aptitude and every tool without a second disclosure', () => {
+    render(<WorkspaceShell active="aptitude"><main>Question capture</main></WorkspaceShell>)
+    const nav = desktopNavigation()
+    const aptitude = nav.getByRole('link', { name: 'Aptitude' })
+    expect(aptitude.getAttribute('href')).toBe('/copilot?mode=aptitude')
+    expect(aptitude.getAttribute('aria-current')).toBe('page')
+    expect(nav.getByRole('link', { name: 'Explore all tools' }).getAttribute('href')).toBe('/tools')
+    for (const name of ['Aptitude', 'AI workspace', 'Repository', 'Practice', 'Remote assist']) {
+      expect(nav.getByRole('link', { name }).closest('details')).toBeNull()
+    }
+    fireEvent.click(screen.getByLabelText('Open workspace navigation'))
+    expect(within(screen.getByRole('navigation', { name: 'Mobile workspace' })).getByRole('link', { name: 'Aptitude' })).toBeTruthy()
+    expect(nav.getAllByRole('link').filter(link => link.getAttribute('aria-current') === 'page')).toHaveLength(1)
   })
 
   it('restores visible focus after selecting an interview view from mobile navigation', () => {

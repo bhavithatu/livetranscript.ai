@@ -178,4 +178,24 @@ raw server stack traces stay out of product copy. Permission/auth boundaries are
 not weakened to make previews or browser tests easier.
 
 ## Transparent coding overlay workspace (2026-09-28)
+
 Screen-aware Live sessions do not show a mirrored screen preview. The selected display remains capture input only. The user sees independently movable/resizable Code/Solution, What to Say and Latest Question surfaces. Background opacity is configurable while text remains fully opaque/readable. Full and Compact presets are provided; geometry persists device-locally. Browser mode can lock geometry but cannot promise OS-level click-through. Native desktop click-through/window exclusion requires native verification before being represented as active. The full transcript remains available through Live controls rather than occupying primary coding space.
+
+## Aptitude and tool discovery (2026-11-18)
+
+Aptitude is a dedicated image workflow at `/copilot?mode=aptitude`, with no
+microphone action required. Sharing, automatic capture, and analysis are explicit
+controls. Show the exact sanitized screenshot, capture time, answer choices,
+worked explanation and verification scope. Crop/masks invalidate old previews;
+replacement inputs and detector changes cannot retain an unlabeled old answer.
+Late requests cannot overwrite a newer capture. Pinning history is explicit.
+Pause stops automatic requests and active analysis; Stop sharing also releases
+the source. Clear removes in-memory captures/history. Retry is explicit and
+retains the original image; exact-image duplicates otherwise reuse/coalesce.
+
+All tools are visible in the shared navigation. `/tools` supplies canonical links
+and descriptions for existing modes, practice, evaluation and settings. Small
+screens retain the single native workspace-menu disclosure, with no nested
+More tools gate. Native selects, keyboard controls and inline error/status
+regions follow the existing ownership rules. See `docs/aptitude-mode.md` for
+the full behavior, limits and verification boundaries.

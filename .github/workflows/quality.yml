@@ -12,6 +12,7 @@ on:
       - 'app/**'
       - 'components/**'
       - 'evals/**'
+      - 'qa/aptitude/**'
       - 'scripts/*verify_deployment.py'
       - 'scripts/*brand-desktop.mjs'
       - 'package.json'
@@ -25,6 +26,7 @@ on:
       - 'app/**'
       - 'components/**'
       - 'evals/**'
+      - 'qa/aptitude/**'
       - 'scripts/*verify_deployment.py'
       - 'scripts/*brand-desktop.mjs'
       - 'package.json'
@@ -44,7 +46,7 @@ jobs:
           version: 9
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
 
@@ -52,7 +54,7 @@ jobs:
       - name: Type check
         run: pnpm exec tsc --noEmit
       - name: Unit tests
-        run: pnpm exec vitest run
+        run: pnpm exec vitest run --maxWorkers=4
       - name: Release checker tests
         run: python3 -B -m unittest scripts/test_verify_deployment.py
       - name: Desktop branding configuration tests
@@ -81,3 +83,39 @@ jobs:
           pnpm run eval:coding
           pnpm run eval:voice
           pnpm run eval:live
+
+  aptitude-browser:
+    name: Aptitude browser workflow
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: Offline aptitude evaluation
+        run: pnpm run eval:aptitude
+      - name: Build actual application
+        run: pnpm run build
+      - name: Install pinned browser tooling
+        run: |
+          python3 -m pip install playwright==1.55.0
+          python3 -m playwright install --with-deps chromium
+      - name: Verify capture, question changes, recovery and responsive UI
+        run: |
+          mkdir -p qa-results/aptitude
+          pnpm start --hostname 127.0.0.1 --port 3000 > qa-results/aptitude/server.log 2>&1 &
+          APTITUDE_SERVER_PID=$!
+          trap 'kill "$APTITUDE_SERVER_PID" || true' EXIT
+          for i in $(seq 1 40); do curl -fsS http://127.0.0.1:3000/tools >/dev/null && break; sleep 1; done
+          pnpm run test:aptitude:browser
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: aptitude-browser-${{ github.sha }}
+          path: qa-results/aptitude/
+          retention-days: 14

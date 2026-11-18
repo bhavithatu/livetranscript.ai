@@ -2,12 +2,12 @@
 
 import Link from 'next/link'
 import { useEffect, useRef, type MouseEvent, type ReactNode } from 'react'
-import { AudioLines, ChevronDown, Download, FileText, FlaskConical, GitBranch, GraduationCap, Menu, MessageSquareText, MonitorUp, Plus, Settings2, Sparkles } from 'lucide-react'
+import { AudioLines, BrainCircuit, ChevronDown, Download, FileText, FlaskConical, GitBranch, GraduationCap, LayoutGrid, Menu, MessageSquareText, MonitorUp, Plus, Settings2, Sparkles } from 'lucide-react'
 import { Wordmark } from './Wordmark'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
 import styles from './WorkspaceShell.module.css'
 
-export type WorkspaceSection = 'interview' | 'copilot' | 'repository' | 'practice' | 'transcripts' | 'remote' | 'settings'
+export type WorkspaceSection = 'interview' | 'copilot' | 'aptitude' | 'repository' | 'practice' | 'transcripts' | 'remote' | 'tools' | 'settings'
 export type InterviewView = 'live' | 'mock' | 'feedback'
 
 type Props = {
@@ -24,10 +24,12 @@ const INTERVIEW_LINKS = [
   { view: 'feedback', label: 'Feedback', icon: MessageSquareText },
 ] as const
 const TOOL_LINKS = [
+  { id: 'aptitude', href: '/copilot?mode=aptitude', label: 'Aptitude', icon: BrainCircuit },
   { id: 'copilot', href: '/copilot', label: 'AI workspace', icon: Sparkles },
   { id: 'repository', href: '/interview/repository', label: 'Repository', icon: GitBranch },
   { id: 'practice', href: '/practice', label: 'Practice', icon: GraduationCap },
   { id: 'remote', href: '/remote', label: 'Remote assist', icon: MonitorUp },
+  { id: 'tools', href: '/tools', label: 'Explore all tools', icon: LayoutGrid },
 ] as const
 
 /** One navigation owner for product routes. Capture lifetimes stay with each page. */
@@ -74,8 +76,10 @@ export function WorkspaceShell({ active, children, interviewView = 'live', onInt
         {active === 'interview' && interviewView === view && <span className={styles.selectedDot} aria-hidden />}
       </Link>)}
       <Link href="/dashboard" onClick={(event) => navigate(event)} aria-current={active === 'transcripts' ? 'page' : undefined} className={styles.navLink}><FileText size={17} strokeWidth={1.7} aria-hidden /><span>Transcripts</span></Link>
-      <details className={styles.moreTools} open={TOOL_LINKS.some(item => item.id === active)}><summary><span>More tools</span><ChevronDown size={15} aria-hidden /></summary>{TOOL_LINKS.map(({ id, href, label, icon: Icon }) => <Link key={id} href={href} onClick={(event) => navigate(event)} aria-current={active === id ? 'page' : undefined} className={styles.navLink}><Icon size={17} strokeWidth={1.7} aria-hidden /><span>{label}</span></Link>)}<Link href="/download" onClick={(event) => navigate(event)} className={styles.navLink}><Download size={17} aria-hidden />Desktop app</Link></details>
+      <p className={styles.groupLabel}>Tools</p>
+      {TOOL_LINKS.map(({ id, href, label, icon: Icon }) => <Link key={id} href={href} onClick={(event) => navigate(event)} aria-current={active === id ? 'page' : undefined} className={styles.navLink}><Icon size={17} strokeWidth={1.7} aria-hidden /><span>{label}</span></Link>)}
       <div className={styles.navBottom}>
+        <Link href="/download" onClick={(event) => navigate(event)} className={styles.navLink}><Download size={17} aria-hidden />Desktop app</Link>
         <Link href="/settings" onClick={(event) => navigate(event)} aria-current={active === 'settings' ? 'page' : undefined} className={styles.navLink}><Settings2 size={17} strokeWidth={1.7} aria-hidden />Settings</Link>
       </div>
     </nav>

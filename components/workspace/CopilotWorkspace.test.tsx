@@ -12,8 +12,9 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/lib/copilot/useCopilotCapture', () => ({ useCopilotCapture: () => mocks.capture }))
 vi.mock('@/components/nav/Wordmark', () => ({ Wordmark: () => <span>LiveTranscript</span> }))
 vi.mock('@/components/ui/ThemeToggle', () => ({ ThemeToggle: () => <span>Theme</span> }))
+vi.mock('@/components/aptitude/AptitudeWorkspace', () => ({ AptitudeWorkspace: () => <section aria-label="Aptitude question workflow">Capture and analyze a question</section> }))
 vi.mock('@/components/copilot/CopilotPanel', () => ({
-  CopilotPanel: ({ getTranscript, variant, onModeChange }: { getTranscript: () => string; variant: string; onModeChange: (mode: 'general' | 'repoInterview') => void }) => <div aria-label="AI panel" data-variant={variant}>{getTranscript()}<button type="button" onClick={() => onModeChange('general')}>General focus</button><button type="button" onClick={() => onModeChange('repoInterview')}>Repository focus</button></div>,
+  CopilotPanel: ({ getTranscript, variant, onModeChange }: { getTranscript: () => string; variant: string; onModeChange: (mode: 'general' | 'repoInterview' | 'aptitude') => void }) => <div aria-label="AI panel" data-variant={variant}>{getTranscript()}<button type="button" onClick={() => onModeChange('general')}>General focus</button><button type="button" onClick={() => onModeChange('repoInterview')}>Repository focus</button><button type="button" onClick={() => onModeChange('aptitude')}>Aptitude focus</button></div>,
 }))
 
 import { CopilotWorkspace } from './CopilotWorkspace'
@@ -29,6 +30,30 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('standalone AI workspace', () => {
+  it('opens aptitude directly without audio controls or a generic chat composer', async () => {
+    window.history.replaceState(null, '', '/copilot?mode=aptitude')
+    render(<CopilotWorkspace initialMode="aptitude" />)
+    expect(screen.getByRole('heading', { name: 'Aptitude' })).toBeTruthy()
+    expect(await screen.findByRole('region', { name: 'Aptitude question workflow' })).toBeTruthy()
+    expect(screen.queryByLabelText('AI panel')).toBeNull()
+    expect(screen.queryByRole('region', { name: 'Optional audio context' })).toBeNull()
+    expect(mocks.capture.start).not.toHaveBeenCalled()
+    expect(within(screen.getByRole('navigation', { name: 'Workspace' })).getByRole('link', { name: 'Aptitude' }).getAttribute('aria-current')).toBe('page')
+  })
+
+  it('stops audio on entering aptitude and restores a conversational mode explicitly', async () => {
+    mocks.capture.status = 'listening'
+    render(<CopilotWorkspace />)
+    fireEvent.click(screen.getByRole('button', { name: 'Aptitude focus' }))
+    expect(mocks.capture.stop).toHaveBeenCalledOnce()
+    expect(window.location.search).toBe('?mode=aptitude')
+    expect(await screen.findByRole('region', { name: 'Aptitude question workflow' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'General' }))
+    expect(screen.queryByRole('region', { name: 'Aptitude question workflow' })).toBeNull()
+    expect(screen.getByLabelText('AI panel')).toBeTruthy()
+    expect(window.location.search).toBe('')
+    expect(mocks.capture.start).not.toHaveBeenCalled()
+  })
   it('opens a working AI surface without starting audio or requiring a meeting', () => {
     render(<CopilotWorkspace />)
     expect(screen.getByLabelText('AI panel').getAttribute('data-variant')).toBe('workspace')

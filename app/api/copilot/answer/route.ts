@@ -34,6 +34,7 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: error instanceof RepoRequestError ? error.message : 'Invalid answer preferences' }, { status: error instanceof RepoRequestError ? error.status : 400 })
   }
   const mode = typeof body.mode === 'string' ? body.mode : undefined
+  if (mode === 'aptitude') return Response.json({ error: 'Use the Aptitude workspace to analyze a question image.', endpoint: '/api/aptitude/analyze' }, { status: 400, headers: { 'Cache-Control': 'no-store' } })
   const profile = modeProfile(mode)
   const image = typeof body.image === 'string' && body.image.startsWith('data:image/') && body.image.length <= MAX_IMAGE_CHARS ? body.image : null
   const question = text(body.question, MAX_QUESTION).trim()

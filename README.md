@@ -21,6 +21,19 @@ Speak or capture a call and watch the words appear the moment they're said, with
 - **Remote assistance** — explicit laptop-owner approval, view-only by default, separately enabled input control and emergency stop. [Desktop preview 0.1.8](https://github.com/bhavithat21/livetranscript.ai/releases/tag/v0.1.8) includes Mac and Windows installers; [device testing remains required](docs/remote-assistance.md).
 - **App appearance** — custom name, presets or a custom icon, with platform-specific limits stated in Settings. [Branding guide](docs/desktop-appearance.md).
 
+## Aptitude and tool discovery
+
+The dedicated **Aptitude** mode at `/copilot?mode=aptitude` supports screenshot
+upload, explicit screen sharing, automatic capture of stable visual changes,
+question categories, worked answers, arithmetic checks, and session history.
+See [the implementation and verification guide](docs/aptitude-mode.md) and
+[the bounded aptitude evaluation suite](evals/aptitude/README.md). Model accuracy
+and real-device capture quality require separate live validation.
+
+**Explore all tools** at `/tools` links directly to AI modes, repository coaching,
+practice, Mock Lab, feedback, capture, remote assistance, and preference screens.
+The workspace navigation exposes primary tools without a second disclosure.
+
 ## Tech Stack
 
 | Concern | Choice |
@@ -61,6 +74,7 @@ Copy `.env.example` to `.env.local` and provide your own values. **Never commit 
 | `ASSEMBLYAI_API_KEY` | Alternate ASR (higher accuracy) | optional |
 | `OPENAI_API_KEY` | Correction + summaries | optional |
 | `ANTHROPIC_API_KEY` | Claude screenshot transcription + default repository specialists | for repository AI |
+| `APTITUDE_MODEL` / `APTITUDE_FALLBACK_MODELS` | Explicit aptitude vision candidates, using the corresponding existing provider keys | optional; [configuration and evaluation](docs/aptitude-mode.md) |
 | `COPILOT_REPO_MODEL_*` | Per-role vision, requirements, implementation, debugger, reviewer and synthesis models | optional; [configuration and benchmarks](evals/repo/README.md) |
 | `GROQ_API_KEY` | Groq-hosted specialist model overrides | for Groq models |
 | `ABLY_API_KEY` | Realtime for meeting rooms and remote-assistance signaling; also the fallback source for remote session signing | for rooms or remote assistance |

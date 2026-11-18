@@ -21,6 +21,9 @@
     "eval:repo:select": "REPO_BENCHMARK_ACTION=select vitest run --config evals/repo/vitest.config.ts manageBenchmark",
     "eval:vision": "vitest run --config evals/vision/vitest.config.ts",
     "eval:classifier": "vitest run --config evals/classifier/vitest.config.ts",
+    "eval:aptitude": "vitest run --config evals/aptitude/vitest.config.ts",
+    "eval:aptitude:prepare": "APTITUDE_EVAL_PREPARE=1 vitest run --config evals/aptitude/vitest.config.ts prepareFixtures",
+    "test:aptitude:browser": "python3 qa/aptitude/verify.py",
     "test:simulator": "vitest run lib/coach/simulation/runner.test.ts",
     "test:live-acceptance": "node scripts/check-production-readiness.mjs"
   },

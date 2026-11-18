@@ -12,6 +12,13 @@ function request(body: unknown, origin = 'https://livetranscript.ai') { return n
 beforeEach(() => { vi.clearAllMocks(); mocks.auth.mockResolvedValue('user'); vi.stubEnv('OPENAI_API_KEY', 'test-only'); mocks.stream.mockImplementation(() => new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode('Answer')); controller.close() } })) })
 afterEach(() => vi.unstubAllEnvs())
 describe('shared live/mock answer calibration', () => {
+  it('keeps aptitude out of the generic speculative answer pipeline', async () => {
+    const response = await POST(request({ mode: 'aptitude', question: 'Which answer is correct?', image: 'data:image/png;base64,AAAA' }))
+    expect(response.status).toBe(400)
+    expect(await response.json()).toMatchObject({ endpoint: '/api/aptitude/analyze' })
+    expect(response.headers.get('cache-control')).toBe('no-store')
+    expect(mocks.stream).not.toHaveBeenCalled()
+  })
   it('keeps existing mode preferences and grounding alongside bounded calibration', async () => {
     const instructions = 'i'.repeat(3989) + 'MODE_END'
     const response = await POST(request({ question: 'Test?', transcript: 'Scenario', instructions, calibration: 'c'.repeat(2000) }))

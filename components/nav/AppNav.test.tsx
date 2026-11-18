@@ -12,7 +12,7 @@ vi.mock('@/components/ui/ThemeToggle', () => ({ ThemeToggle: () => <span>Theme</
 afterEach(cleanup)
 
 describe('public navigation ownership', () => {
-  it.each(['/dashboard', '/interview', '/copilot', '/practice', '/remote', '/settings', '/record', '/room/new', '/session/example', '/s/example', '/sign-in', '/sign-up'])('leaves %s to its route shell', (pathname) => {
+  it.each(['/dashboard', '/interview', '/copilot', '/practice', '/remote', '/tools', '/settings', '/record', '/room/new', '/session/example', '/s/example', '/sign-in', '/sign-up'])('leaves %s to its route shell', (pathname) => {
     navigation.pathname = pathname
     render(<AppNav clerkConfigured={false} />)
     expect(screen.queryByRole('navigation', { name: 'Main' })).toBeNull()

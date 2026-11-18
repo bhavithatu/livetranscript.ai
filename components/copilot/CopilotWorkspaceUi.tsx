@@ -1,11 +1,17 @@
 'use client'
 
-import { ArrowUpRight, Code2, Compass, FileText, FolderCode, MessagesSquare, Network, type LucideIcon } from 'lucide-react'
+import { ArrowUpRight, BrainCircuit, Code2, Compass, FileText, FolderCode, MessagesSquare, Network, type LucideIcon } from 'lucide-react'
 import { MODE_ORDER, MODE_PROFILES, type CopilotMode } from '@/lib/copilot/modes'
 import type { AnswerPreferences } from '@/lib/copilot/answerPreferences'
 
 type Starter = { label: string; detail: string; prompt: string }
 const WORKSPACE_MODES: Record<CopilotMode, { icon: LucideIcon; description: string; title: string; prompts: Starter[] }> = {
+  aptitude: {
+    icon: BrainCircuit,
+    description: 'Question captures, answer choices and worked explanations',
+    title: 'Work through one question at a time.',
+    prompts: [],
+  },
   general: {
     icon: Compass,
     description: 'Questions, explanations and preparation',
@@ -54,11 +60,11 @@ const WORKSPACE_MODES: Record<CopilotMode, { icon: LucideIcon; description: stri
   },
 }
 
-export function WorkspaceModeNavigation({ mode, onChange }: { mode: CopilotMode; onChange: (mode: CopilotMode) => void }) {
+export function WorkspaceModeNavigation({ mode, onChange, horizontal = false }: { mode: CopilotMode; onChange: (mode: CopilotMode) => void; horizontal?: boolean }) {
   return (
-    <section aria-label="Interview focus" className="p-3">
+    <section aria-label="AI modes" className="p-3">
       <p className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-[color:var(--muted)]">Focus</p>
-      <div className="grid grid-cols-2 gap-1 sm:grid-cols-3 xl:grid-cols-1">
+      <div className={`grid grid-cols-2 gap-1 sm:grid-cols-3 ${horizontal ? '2xl:grid-cols-6' : 'xl:grid-cols-1'}`}>
         {MODE_ORDER.map((item) => {
           const { icon: Icon, description } = WORKSPACE_MODES[item]
           return (

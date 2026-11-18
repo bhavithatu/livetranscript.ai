@@ -39,7 +39,8 @@ export function LiveAnswerCanvas({ getTranscript, getQuestionTranscript = getTra
       const routed = await router.route(question)
       if (!valid()) return
       // Repository interviews keep their dedicated evidence pipeline outside Live.
-      const answerMode: CopilotMode = routed.classification?.mode === 'repoInterview' ? 'general' : (routed.classification?.mode ?? 'general')
+      const routedMode = routed.classification?.mode ?? 'general'
+      const answerMode = routedMode === 'repoInterview' || routedMode === 'aptitude' ? 'general' : routedMode
       setMode(answerMode)
       const context = contexts[answerMode]
       const retrieved = answerMode === 'behavioral' && context.storyCount > 0

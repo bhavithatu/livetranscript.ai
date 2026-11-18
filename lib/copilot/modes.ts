@@ -7,7 +7,7 @@
 // (coding OCR) and per-user RAG (behavioral STAR bank) layer on in P2/P3 — the
 // prompts already describe the intent so the upgrade is additive.
 
-export type CopilotMode = 'general' | 'repoInterview' | 'coding' | 'systemDesign' | 'behavioral'
+export type CopilotMode = 'general' | 'aptitude' | 'repoInterview' | 'coding' | 'systemDesign' | 'behavioral'
 
 export interface ModeProfile {
   id: CopilotMode
@@ -474,6 +474,7 @@ QUALITY GATES before answering:
 export const MODE_PROFILES: Record<CopilotMode, ModeProfile> = {
   // fast tier: latency-critical / retrieval-shaped. smart tier: correctness-first reasoning.
   general: { id: 'general', label: 'General', hint: 'Ask anything about the transcript', temperature: 0.3, system: GENERAL, tier: 'fast', maxTokens: 1500 },
+  aptitude: { id: 'aptitude', label: 'Aptitude', hint: 'Capture a question, analyze its choices, and check the answer', temperature: 0.1, system: 'Aptitude uses the dedicated /api/aptitude/analyze structured image workflow. Preserve the exact question, answer choices, and visual evidence. Abstain when required evidence is missing. Never generate a speculative answer without the question image.', tier: 'smart', maxTokens: 3000 },
   repoInterview: { id: 'repoInterview', label: 'Repo interview', hint: 'Capture questions, navigate files, trace code deeply', temperature: 0.2, system: REPO_INTERVIEW, tier: 'smart', maxTokens: 4000 },
   coding: { id: 'coding', label: 'Coding', hint: 'Approach, complexity, code, edge cases', temperature: 0.2, system: CODING, tier: 'smart', maxTokens: 3000 },
   systemDesign: { id: 'systemDesign', label: 'System design', hint: 'Structured design, tradeoffs, next step', temperature: 0.3, system: SYSTEM_DESIGN, tier: 'smart', maxTokens: 2500 },
@@ -485,7 +486,7 @@ export const MODE_PROFILES: Record<CopilotMode, ModeProfile> = {
   behavioral: { id: 'behavioral', label: 'Behavioral', hint: 'STAR scaffold from what was said', temperature: 0.4, system: BEHAVIORAL, tier: 'smart', maxTokens: 4000 },
 }
 
-export const MODE_ORDER: CopilotMode[] = ['general', 'repoInterview', 'coding', 'systemDesign', 'behavioral']
+export const MODE_ORDER: CopilotMode[] = ['general', 'aptitude', 'repoInterview', 'coding', 'systemDesign', 'behavioral']
 
 export function modeProfile(mode: string | undefined): ModeProfile {
   return MODE_PROFILES[mode as CopilotMode] ?? MODE_PROFILES.general

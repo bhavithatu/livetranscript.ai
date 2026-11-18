@@ -9,7 +9,7 @@ import { ThemeToggle } from '@/components/ui/ThemeToggle'
 import styles from '@/components/site/Site.module.css'
 
 // Product routes own their workspace navigation. Public pages share this shell.
-const HIDDEN_PREFIXES = ['/dashboard', '/record', '/copilot', '/interview', '/practice', '/room', '/remote', '/s', '/session', '/settings', '/sign-in', '/sign-up', '/shadow-demo']
+const HIDDEN_PREFIXES = ['/dashboard', '/record', '/copilot', '/interview', '/practice', '/room', '/remote', '/tools', '/s', '/session', '/settings', '/sign-in', '/sign-up', '/shadow-demo']
 const LINKS = [
   { href: '/#workflows', label: 'Product' },
   { href: '/pricing', label: 'Pricing' },
@@ -49,7 +49,9 @@ export function AppNav({ clerkConfigured }: { clerkConfigured: boolean }) {
               {LINKS.map(({ href, label }) => <Link key={href} href={href} aria-current={pathname === href ? 'page' : undefined}>{label}</Link>)}
               <Link href="/interview">Interview workspace</Link>
               <Link href="/copilot">AI workspace</Link>
+              <Link href="/copilot?mode=aptitude">Aptitude</Link>
               <Link href="/practice">Practice</Link>
+              <Link href="/tools">Explore all tools</Link>
               {clerkConfigured && <>
                 <Show when="signed-out"><Link href="/sign-in">Sign in</Link></Show>
                 <Show when="signed-in"><div className="flex items-center gap-3 p-3"><UserButton /><span className="text-sm">Your account</span></div></Show>

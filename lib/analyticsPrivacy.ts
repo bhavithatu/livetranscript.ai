@@ -16,7 +16,7 @@ export function isPrivateWorkspaceLocation(value: unknown): boolean {
   if (typeof value !== 'string') return false
   try {
     const path = new URL(value, 'https://livetranscript.ai').pathname
-    return path === '/settings' || path.startsWith('/settings/') || path === '/practice' || path.startsWith('/practice/') || path === '/copilot' || path.startsWith('/copilot/') || path.startsWith('/api/copilot/')
+    return path === '/settings' || path.startsWith('/settings/') || path === '/practice' || path.startsWith('/practice/') || path === '/tools' || path.startsWith('/tools/') || path === '/copilot' || path.startsWith('/copilot/') || path.startsWith('/api/copilot/') || path.startsWith('/api/aptitude/')
   } catch { return false }
 }
 

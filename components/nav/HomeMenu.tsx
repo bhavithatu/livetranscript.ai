@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { useEffect, useRef } from 'react'
-import { ChevronDown, Home, FileText, Mic, MonitorUp, Settings, Sparkles, Users, GraduationCap, FlaskConical } from 'lucide-react'
+import { BrainCircuit, ChevronDown, Home, FileText, LayoutGrid, Mic, MonitorUp, Settings, Sparkles, Users, GraduationCap, FlaskConical } from 'lucide-react'
 import { Wordmark } from './Wordmark'
 
 // Compact navigation for focused recording, meeting, and reading routes.
@@ -10,11 +10,13 @@ const LINKS = [
   { href: '/interview', label: 'Live interview', icon: Mic },
   { href: '/interview#mock', label: 'Mock Lab', icon: FlaskConical },
   { href: '/copilot', label: 'AI workspace', icon: Sparkles },
+  { href: '/copilot?mode=aptitude', label: 'Aptitude', icon: BrainCircuit },
   { href: '/practice', label: 'Practice', icon: GraduationCap },
   { href: '/dashboard', label: 'Transcripts', icon: FileText },
   { href: '/record', label: 'New transcript', icon: Mic },
   { href: '/room/new', label: 'New meeting', icon: Users },
   { href: '/remote', label: 'Remote assist', icon: MonitorUp },
+  { href: '/tools', label: 'Explore all tools', icon: LayoutGrid },
   { href: '/settings', label: 'Settings', icon: Settings },
 ]
 

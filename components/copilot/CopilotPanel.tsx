@@ -1,5 +1,6 @@
 'use client'
 import { useCallback, useEffect, useId, useRef, useState, type CSSProperties } from 'react'
+import Link from 'next/link'
 import { Check, Eye, EyeOff, FileText, Lock, Monitor, MonitorOff, MoreHorizontal, Play, Send, SlidersHorizontal, Sparkles, Square, X } from 'lucide-react'
 import { useLockMode } from '@/lib/desktop/useLockMode'
 import { LeverSwitch } from '@/components/ui/LeverSwitch'
@@ -88,7 +89,7 @@ export function CopilotPanel({
   const repo = useRepoInterview(getTranscript, mode === 'repoInterview')
   const screenRepo = useScreenRepository(mode === 'repoInterview', screen.sharing, screen.grabCodeFrame, responsePreferences.preferences)
   const contexts = useModeContexts()
-  const context = contexts[mode] // per-mode uploaded documents + answer instructions
+  const context = contexts[mode === 'aptitude' ? 'general' : mode] // aptitude owns its separate image workflow
   const profile = useCandidateProfile() // resume + JD: global, always-injected grounding
   const router = useOrchestrationRouter() // auto mode-routing + live web search for a question
   const feed = useAnswerFeed(responsePreferences.preferences)
@@ -220,6 +221,10 @@ export function CopilotPanel({
         const answerMode: CopilotMode = routed.classification?.mode ?? mode
         if (answerMode !== mode) setMode(answerMode)
         if (answerMode === 'repoInterview') { await answerRepoQuestion(q); return }
+        if (answerMode === 'aptitude') {
+          setQuestionNotice('Open Aptitude to analyze a complete question image.')
+          return
+        }
         const routedContext = contexts[answerMode]
         const retrieved =
           answerMode === 'behavioral' && routedContext.storyCount > 0
@@ -395,6 +400,11 @@ export function CopilotPanel({
   }
 
   const changeMode = (next: CopilotMode) => {
+    if (next === 'aptitude' && onModeChange) {
+      stopAnswer()
+      onModeChange(next)
+      return
+    }
     if (preparing || preparingCaptured) {
       preparationGeneration.current += 1
       submissionRef.current = false
@@ -493,7 +503,7 @@ export function CopilotPanel({
       <div className={workspace ? `copilot-workspace-grid relative grid min-w-0 ${railCollapsed ? '' : 'xl:grid-cols-[15rem_minmax(0,1fr)]'}` : 'contents'}>
         <div ref={setupRailRef} id={`${responseId}-setup`} className={workspace ? `copilot-workspace-rail absolute inset-x-0 top-0 z-10 max-h-80 overflow-y-auto shadow-lg ${mobileSetupOpen ? 'block' : 'hidden'} border-b border-[color:var(--line)] bg-[color:var(--reader)] xl:static xl:z-auto xl:max-h-none xl:shadow-none ${railCollapsed ? 'xl:hidden' : 'xl:block xl:border-b-0 xl:border-r'}` : 'contents'}>
           {workspace ? <WorkspaceModeNavigation mode={mode} onChange={changeMode} /> : <div aria-label="Interview focus" className="flex gap-1 overflow-x-auto border-b border-[color:var(--line)] px-3 py-2">
-            {MODE_ORDER.map((item) => <button key={item} type="button" onClick={() => changeMode(item)} aria-pressed={mode === item} data-active={mode === item} title={MODE_PROFILES[item].hint}
+            {MODE_ORDER.map((item) => item === 'aptitude' ? <Link key={item} href="/copilot?mode=aptitude" className="inline-flex min-h-11 shrink-0 items-center rounded-full px-3 text-xs text-[color:var(--signal)] hover:bg-black/5">Aptitude</Link> : <button key={item} type="button" onClick={() => changeMode(item)} aria-pressed={mode === item} data-active={mode === item} title={MODE_PROFILES[item].hint}
               className="min-h-11 shrink-0 rounded-full px-3 text-xs text-[color:var(--muted)] hover:bg-black/5 data-[active=true]:bg-ink data-[active=true]:text-white">{MODE_PROFILES[item].label}</button>)}
           </div>}
           {workspace ? <div className="border-t border-[color:var(--line)]"><ResponsePreferencesControls {...responsePreferences} /></div> : <div className="border-b border-[color:var(--line)] px-4 py-1">

@@ -3,20 +3,27 @@
 import { LiveScrollArea } from '@/components/transcript/LiveScrollArea'
 import { memo, useCallback, useRef, useState } from 'react'
 import Link from 'next/link'
-import { ChevronDown, FileCode2, Mic, Monitor, Shield, Sparkles, Square, X } from 'lucide-react'
+import dynamic from 'next/dynamic'
+import { BrainCircuit, ChevronDown, FileCode2, Mic, Monitor, Shield, Sparkles, Square, X } from 'lucide-react'
+import { WorkspaceModeNavigation } from '@/components/copilot/CopilotWorkspaceUi'
 import { WorkspaceShell } from '@/components/nav/WorkspaceShell'
 import { CopilotPanel } from '@/components/copilot/CopilotPanel'
 import { MODE_ORDER, type CopilotMode } from '@/lib/copilot/modes'
 import { useCopilotCapture } from '@/lib/copilot/useCopilotCapture'
 
 const WorkspacePanel = memo(CopilotPanel)
+const AptitudeWorkspace = dynamic(() => import('@/components/aptitude/AptitudeWorkspace').then(module => module.AptitudeWorkspace), {
+  loading: () => <p role="status" className="p-6 text-sm text-[color:var(--muted)]">Loading question tools…</p>,
+})
 
 export function CopilotWorkspace({ initialMode = 'general' }: { initialMode?: CopilotMode }) {
   const capture = useCopilotCapture()
+  const stopAudio = capture.stop
   const [activeMode, setActiveMode] = useState<CopilotMode>(initialMode)
   const lastMode = useRef(initialMode)
   const modeChanged = useCallback((mode: CopilotMode) => {
     if (!MODE_ORDER.includes(mode)) return
+    if (mode === 'aptitude') stopAudio()
     setActiveMode(mode)
     if (lastMode.current === mode) return
     lastMode.current = mode
@@ -25,7 +32,7 @@ export function CopilotWorkspace({ initialMode = 'general' }: { initialMode?: Co
     if (mode === 'general') url.searchParams.delete('mode')
     else url.searchParams.set('mode', mode)
     window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`)
-  }, [])
+  }, [stopAudio])
   const [source, setSource] = useState<'mic' | 'system'>('mic')
   const [transcriptOpen, setTranscriptOpen] = useState(false)
   const [privacyOpen, setPrivacyOpen] = useState(false)
@@ -33,17 +40,18 @@ export function CopilotWorkspace({ initialMode = 'general' }: { initialMode?: Co
   const wordCount = capture.transcript.trim() ? capture.transcript.trim().split(/\s+/).length : 0
 
   return (
-    <WorkspaceShell active={activeMode === 'repoInterview' ? 'repository' : 'copilot'}>
+    <WorkspaceShell active={activeMode === 'aptitude' ? 'aptitude' : activeMode === 'repoInterview' ? 'repository' : 'copilot'}>
     <main className="ai-workspace flex min-h-dvh flex-col text-ink">
       <header className="ai-workspace-header flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[color:var(--line)] px-4 py-4 sm:px-6">
         <div className="flex min-w-0 items-center gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[color:var(--signal)]/10 text-[color:var(--signal)]">{activeMode === 'repoInterview' ? <FileCode2 size={21} aria-hidden /> : <Sparkles size={21} aria-hidden />}</span>
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[color:var(--signal)]/10 text-[color:var(--signal)]">{activeMode === 'aptitude' ? <BrainCircuit size={21} aria-hidden /> : activeMode === 'repoInterview' ? <FileCode2 size={21} aria-hidden /> : <Sparkles size={21} aria-hidden />}</span>
           <div className="min-w-0">
-            <h1 className="text-xl font-semibold tracking-tight">{activeMode === 'repoInterview' ? 'Repository' : 'AI workspace'}</h1>
-            <p className="mt-0.5 text-xs text-[color:var(--muted)]">{activeMode === 'repoInterview' ? 'Understand files, trace behavior, and plan your next change.' : 'A dedicated space for questions, code, and deeper understanding.'}</p>
+            <h1 className="text-xl font-semibold tracking-tight">{activeMode === 'aptitude' ? 'Aptitude' : activeMode === 'repoInterview' ? 'Repository' : 'AI workspace'}</h1>
+            <p className="mt-0.5 text-xs text-[color:var(--muted)]">{activeMode === 'aptitude' ? 'Capture each question, inspect the answer, and follow the explanation.' : activeMode === 'repoInterview' ? 'Understand files, trace behavior, and plan your next change.' : 'A dedicated space for questions, code, and deeper understanding.'}</p>
           </div>
         </div>
         <div className="ml-auto flex items-center gap-1">
+          <Link href="/tools" className="inline-flex min-h-11 items-center rounded-lg px-3 text-xs font-medium text-[color:var(--signal)] hover:bg-[color:var(--paper)]">Explore all tools</Link>
           <button type="button" aria-expanded={privacyOpen} aria-controls="copilot-privacy" onClick={() => setPrivacyOpen((open) => !open)} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 text-xs text-[color:var(--muted)] hover:bg-[color:var(--paper)]">
             <Shield size={15} aria-hidden /> <span>Privacy</span>
           </button>
@@ -67,7 +75,7 @@ export function CopilotWorkspace({ initialMode = 'general' }: { initialMode?: Co
         </section>
       )}
 
-      <section aria-label="Optional audio context" className="ai-workspace-audio shrink-0 border-b border-[color:var(--line)] px-4 py-2 sm:px-6">
+      {activeMode !== 'aptitude' && <section aria-label="Optional audio context" className="ai-workspace-audio shrink-0 border-b border-[color:var(--line)] px-4 py-2 sm:px-6">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <div className="mr-auto min-w-0">
             <p className="flex items-center gap-2 text-xs font-semibold"><span className={`h-1.5 w-1.5 rounded-full ${capture.status === 'listening' ? 'bg-emerald-500' : 'bg-[color:var(--muted)]/40'}`} aria-hidden />{active ? 'Audio context' : 'Optional audio'}</p>
@@ -96,9 +104,9 @@ export function CopilotWorkspace({ initialMode = 'general' }: { initialMode?: Co
         {capture.truncated && <p role="status" className="mt-2 text-xs text-[color:var(--muted)]">Context limit reached. Only the most recent audio context is retained.</p>}
         {capture.error && <p role="alert" className="mt-2 text-sm text-[color:var(--stop)]">{capture.error}</p>}
         {source === 'system' && !active && <p className="mt-1 text-xs text-[color:var(--muted)]">In a browser, select a supported tab or display and enable its audio. The desktop app can use native system audio.</p>}
-      </section>
+      </section>}
 
-      {transcriptOpen && (
+      {activeMode !== 'aptitude' && transcriptOpen && (
         <section id="copilot-live-context" aria-label="Captured audio context" className="ai-workspace-notice shrink-0 border-b border-[color:var(--line)] px-4 py-3 sm:px-6">
           <div className="mb-2 flex items-center justify-between gap-3">
             <p className="text-xs font-medium text-[color:var(--muted)]">Live context · kept in this tab</p>
@@ -111,7 +119,10 @@ export function CopilotWorkspace({ initialMode = 'general' }: { initialMode?: Co
       )}
 
       <div className="ai-workspace-body min-h-0 flex-1 p-3 sm:p-4">
-        <WorkspacePanel initialMode={initialMode} onModeChange={modeChanged} variant="workspace" getTranscript={capture.getTranscript} />
+        {activeMode === 'aptitude' ? <>
+          <div className="mb-4 rounded-xl border border-[color:var(--line)] bg-[color:var(--reader)]"><WorkspaceModeNavigation mode="aptitude" onChange={modeChanged} horizontal /></div>
+          <AptitudeWorkspace />
+        </> : <WorkspacePanel initialMode={activeMode} onModeChange={modeChanged} variant="workspace" getTranscript={capture.getTranscript} />}
       </div>
     </main>
     </WorkspaceShell>

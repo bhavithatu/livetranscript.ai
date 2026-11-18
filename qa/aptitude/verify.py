@@ -1,0 +1,273 @@
+"""Real Next UI and capture pipeline, synthetic screen and explicit provider stub.
+
+Run against a local Next server with no Clerk configuration (CI uses `pnpm start`
+after building). The unauthenticated probe must pass before any image is sent.
+This is browser integration evidence, never a live-model accuracy benchmark or
+an operating-system screen-picker certification. No paid API calls are made.
+"""
+import asyncio
+import base64
+import hashlib
+import json
+import os
+import pathlib
+import time
+from playwright.async_api import Error as PlaywrightError, async_playwright, expect
+
+BASE = os.environ.get('APTITUDE_QA_URL', 'http://127.0.0.1:3000').rstrip('/')
+OUT = pathlib.Path('qa-results/aptitude')
+OUT.mkdir(parents=True, exist_ok=True)
+
+# The app still calls getDisplayMedia, uses a real MediaStream and samples a real
+# playing video. Only the browser picker/source is replaced with owned content.
+SCREEN = r"""(() => {
+  let canvas, stream, question = 1, displayCalls = 0, microphoneCalls = 0;
+  function draw(n) {
+    question = n;
+    if (!canvas) return;
+    const c = canvas.getContext('2d');
+    c.fillStyle = '#ffffff'; c.fillRect(0,0,1000,650);
+    c.fillStyle = '#25271f'; c.font = 'bold 32px sans-serif';
+    c.fillText('Original browser fixture ' + n, 50, 80);
+    c.font = '28px sans-serif';
+    c.fillText('A team completed 80 tasks in week 1',50,155);
+    c.fillText('and ' + (80+20*n) + ' tasks in week 2.',50,200);
+    c.fillText('What was the percentage increase?',50,265);
+    ['A. 0%', 'B. '+(25*n)+'%', 'C. 88%', 'D. 125%'].forEach((x,i)=>c.fillText(x,60,350+60*i));
+  }
+  window.__aptitudeScreen = {
+    show: draw,
+    ended: () => { for (const t of stream?.getTracks() || []) { t.stop(); t.dispatchEvent(new Event('ended')); } },
+    liveTracks: () => (stream?.getTracks() || []).filter(t=>t.readyState==='live').length,
+    calls: () => ({ display: displayCalls, microphone: microphoneCalls })
+  };
+  const devices = navigator.mediaDevices || {};
+  Object.defineProperty(devices, 'getDisplayMedia', { configurable: true, value: async () => {
+    displayCalls++;
+    canvas = document.createElement('canvas'); canvas.width=1000; canvas.height=650;
+    draw(question); stream = canvas.captureStream(10); return stream;
+  }});
+  Object.defineProperty(devices, 'getUserMedia', { configurable: true, value: async () => {
+    microphoneCalls++;
+    throw new DOMException('Microphone access is unexpected in this browser test.', 'NotAllowedError');
+  }});
+  if (!navigator.mediaDevices) Object.defineProperty(navigator, 'mediaDevices', {value: devices});
+})()"""
+
+
+def response_for(body, number=0, status='solved'):
+    before, after = (72, 90) if number == 0 else (80, 80 + 20 * number)
+    value = 25 if number == 0 else 25 * number
+    options = [('A', '20%'), ('B', '25%'), ('C', '18%'), ('D', '30%')] if number == 0 else [('A', '0%'), ('B', f'{value}%'), ('C', '88%'), ('D', '125%')]
+    question = {
+        'stem': f'A team completed {before} tasks in week 1 and {after} tasks in week 2. What was the percentage increase?',
+        'instructions': [], 'passage': None,
+        'options': [{'id': x, 'label': x, 'text': y} for x, y in options],
+        'responseType': 'single_choice', 'missingEvidence': [],
+    }
+    image_hash = hashlib.sha256(base64.b64decode(body['image'].split(',', 1)[1])).hexdigest()
+    answer = {'selectedOptionIds': ['B'], 'value': str(value), 'unit': '%',
+              'summary': f'The increase is {value}%.',
+              'workedExplanation': [f'The increase is {after} − {before} = {after-before}.', f'Divide by {before} and multiply by 100 to get {value}%.'],
+              'evidence': [f'The captured question gives {before} and {after} tasks.'],
+              'calculation': {'expression': f'({after}-{before})/{before}*100', 'claimedValue': value, 'decimalPlaces': None}}
+    if status != 'solved':
+        answer = None
+        question['missingEvidence'] = ['Include all answer choices in the capture.']
+    return {'schemaVersion': 1, 'captureId': body['captureId'], 'questionVersion': body['questionVersion'],
+            'questionId': hashlib.sha256(question['stem'].encode()).hexdigest(), 'sourceHash': image_hash,
+            'category': 'numerical', 'status': status, 'question': question, 'answer': answer,
+            'message': None if status == 'solved' else 'The question is incomplete. Capture all choices.',
+            'verification': {'method': 'arithmetic' if status == 'solved' else 'none',
+                             'outcome': 'passed' if status == 'solved' else 'not_run',
+                             'notes': ['Synthetic browser response; this does not measure model accuracy.']},
+            'provider': 'openai', 'model': 'browser-qa-stub', 'durationMs': 12}
+
+
+async def main():
+    report = {'kind': 'aptitude-browser-integration', 'liveModel': False, 'nativePicker': False,
+              'checks': [], 'layouts': [], 'browserErrors': [], 'stubErrors': []}
+    requests = []
+    state = {'number': 0, 'status': 'solved', 'delay': 0}
+    async with async_playwright() as playwright:
+        browser = await playwright.chromium.launch(executable_path=os.environ.get('CHROMIUM_PATH') or None, args=['--no-sandbox'])
+        page = await browser.new_page(viewport={'width': 1440, 'height': 1000})
+        page.set_default_timeout(15000)
+        # Locator assertions have their own timeout; page.set_default_timeout
+        # does not change Playwright's otherwise five-second expect deadline.
+        expect.set_options(timeout=15000)
+        await page.add_init_script(SCREEN)
+        page.on('pageerror', lambda error: report['browserErrors'].append(str(error)))
+
+        async def wait_for_requests(expected):
+            deadline = time.monotonic() + 15
+            while len(requests) < expected and time.monotonic() < deadline:
+                await asyncio.sleep(.05)
+            assert len(requests) == expected, f'Expected {expected} stub requests, received {len(requests)}'
+
+        async def click_for_request(button):
+            expected = len(requests) + 1
+            await button.click()
+            await wait_for_requests(expected)
+
+        try:
+            # An empty body cannot reach a model even if this server was
+            # accidentally launched with an auth preview bypass. Fail early in
+            # that case, before testing the real image submission below.
+            probe = await page.request.post(BASE + '/api/aptitude/analyze', data={})
+            assert probe.status == 401, f'Expected an unauthenticated local server, received HTTP {probe.status}'
+            await page.goto(BASE + '/tools', wait_until='networkidle')
+            await expect(page.get_by_role('heading', name='Explore all tools', exact=True)).to_be_visible()
+            for label in ['Questions and analysis', 'Practice and evaluation', 'Capture and collaboration', 'Make it yours']:
+                await expect(page.get_by_role('heading', name=label, exact=True)).to_be_visible()
+            await page.get_by_role('link', name='Open Aptitude', exact=True).click()
+            await expect(page.get_by_role('heading', name='Aptitude', exact=True)).to_be_visible()
+            await expect(page.get_by_role('button', name='Share screen', exact=True)).to_be_visible()
+            assert await page.get_by_role('button', name='Start listening', exact=True).count() == 0
+            assert await page.evaluate('window.__aptitudeScreen.calls()') == {'display': 0, 'microphone': 0}
+            report['checks'].append('Tools catalog and direct Aptitude navigation; no microphone starts')
+
+            await page.get_by_role('button', name='Try a practice question', exact=True).click()
+            preview = page.get_by_alt_text('Question screenshot ready for analysis')
+            await expect(preview).to_be_visible()
+            sample = await preview.get_attribute('src')
+            upload = OUT / 'owned-practice-input.png'
+            upload.write_bytes(base64.b64decode(sample.split(',', 1)[1]))
+            await page.get_by_role('button', name='Analyze this capture', exact=True).click()
+            await expect(page.get_by_role('alert').filter(has_text='Sign in')).to_be_visible()
+            report['checks'].append('Real Next API rejects unauthenticated analysis and retains capture for retry')
+
+            async def serve(route):
+                body = route.request.post_data_json
+                assert set(body) == {'captureId', 'questionVersion', 'image', 'category'}
+                assert body['image'].startswith('data:image/')
+                requests.append({'captureId': body['captureId'], 'version': body['questionVersion'], 'number': state['number'], 'at': time.monotonic()})
+                mode, number, delay = state['status'], state['number'], state['delay']
+                if delay:
+                    await asyncio.sleep(delay)
+                try:
+                    if mode == 'error':
+                        await route.fulfill(status=502, json={'error': 'Synthetic provider interruption. Retry this capture.'})
+                    else:
+                        await route.fulfill(status=200, json=response_for(body, number, mode))
+                except PlaywrightError as error:
+                    # Retired requests may fail fulfillment after an intentional
+                    # abort. Do not swallow fixture/JSON errors or other route
+                    # failures and accidentally report them as model behavior.
+                    failure = route.request.failure or ''
+                    if 'ERR_ABORTED' not in failure and not any(token in str(error) for token in ['Invalid InterceptionId', 'Target page, context or browser has been closed']):
+                        report['stubErrors'].append(str(error))
+            await page.route('**/api/aptitude/analyze', serve)
+            await click_for_request(page.get_by_role('button', name='Retry this capture', exact=True))
+            await expect(page.get_by_role('heading', name='B — 25%', exact=True)).to_be_visible()
+            await expect(page.get_by_role('region', name='Worked explanation')).to_be_visible()
+            await expect(page.get_by_role('region', name='Answer check')).to_be_visible()
+            report['checks'].append('Capture → request → validated choice, worked explanation and check (provider stub)')
+
+            state['status'] = 'needs_capture'
+            await click_for_request(page.get_by_role('button', name='Retry this capture', exact=True))
+            await expect(page.get_by_role('button', name='Capture a complete view', exact=True)).to_be_visible()
+            assert await page.get_by_text('Suggested answer', exact=True).count() == 0
+            state['status'] = 'error'
+            await click_for_request(page.get_by_role('button', name='Retry this capture', exact=True))
+            await expect(page.get_by_role('alert').filter(has_text='Synthetic provider interruption')).to_be_visible()
+            state['status'] = 'solved'
+            await click_for_request(page.get_by_role('button', name='Retry this capture', exact=True))
+            await expect(page.get_by_role('heading', name='B — 25%', exact=True)).to_be_visible()
+            report['checks'].append('Missing evidence withholds choice; provider failure recovers on explicit retry')
+
+            await page.get_by_label('Upload aptitude screenshot', exact=True).set_input_files(str(upload))
+            await expect(page.get_by_text('Screenshot ready. Select Analyze this capture when you are ready.', exact=True)).to_be_visible()
+            await click_for_request(page.get_by_role('button', name='Analyze this capture', exact=True))
+            await expect(page.get_by_role('heading', name='B — 25%', exact=True)).to_be_visible()
+            choices = await page.get_by_label('View a question', exact=True).locator('option').evaluate_all('(items)=>items.map(x=>x.value).filter(Boolean)')
+            assert len(choices) == 2
+            await page.get_by_label('View a question', exact=True).select_option(choices[-1])
+            await expect(page.get_by_role('button', name='Follow latest', exact=True)).to_be_visible()
+            report['checks'].append('Real image upload, bounded question history and explicit history pinning')
+
+            state['number'] = 1
+            await page.get_by_role('button', name='Share screen', exact=True).click()
+            await expect(page.get_by_role('button', name='Start automatic capture', exact=True)).to_be_visible()
+            baseline = len(requests)
+            await page.get_by_role('button', name='Start automatic capture', exact=True).click()
+            await wait_for_requests(baseline + 1)
+            await expect(page.get_by_role('button', name='Follow latest', exact=True)).to_be_visible()
+            await page.get_by_role('button', name='Follow latest', exact=True).click()
+            await expect(page.get_by_role('heading', name='B — 25%', exact=True)).to_be_visible()
+            count = len(requests)
+            await asyncio.sleep(1.5)
+            assert len(requests) == count, 'Unchanged screen caused a duplicate request'
+            report['checks'].append('Actual video/canvas sampler auto-captures a stable screen once; history pin does not stop capture')
+
+            changed_at = time.monotonic()
+            state['number'] = 2
+            await page.evaluate('window.__aptitudeScreen.show(2)')
+            await asyncio.sleep(.15)
+            state['number'] = 3
+            await page.evaluate('window.__aptitudeScreen.show(3)')
+            await expect(page.get_by_role('heading', name='B — 75%', exact=True)).to_be_visible()
+            assert len(requests) == count + 1, 'Intermediate unstable question was submitted'
+            report['syntheticChangeToRequestMs'] = round((requests[-1]['at'] - changed_at) * 1000)
+            report['checks'].append('Rapid A→B→C visual change captures final stable C without a 15-second blind period')
+
+            await page.get_by_role('button', name='Pause automatic capture', exact=True).click()
+            count = len(requests)
+            state['number'] = 4
+            await page.evaluate('window.__aptitudeScreen.show(4)')
+            await asyncio.sleep(1.4)
+            assert len(requests) == count
+            await click_for_request(page.get_by_role('button', name='Capture now', exact=True))
+            await expect(page.get_by_role('heading', name='B — 100%', exact=True)).to_be_visible()
+            await page.get_by_role('button', name='Capture now', exact=True).click()
+            await expect(page.get_by_role('heading', name='B — 100%', exact=True)).to_be_visible()
+            await asyncio.sleep(.5)
+            assert len(requests) == count + 1, 'Identical image should reuse its validated answer'
+            await click_for_request(page.get_by_role('button', name='Retry this capture', exact=True))
+            await expect(page.get_by_role('heading', name='B — 100%', exact=True)).to_be_visible()
+            assert len(requests) == count + 2, 'Explicit retry should force a fresh request'
+            await page.get_by_role('button', name='Stop sharing', exact=True).click()
+            assert await page.evaluate('window.__aptitudeScreen.liveTracks()') == 0
+            assert (await page.evaluate('window.__aptitudeScreen.calls()'))['microphone'] == 0
+            report['checks'].append('Pause stops requests; unchanged recapture reuses exact image; Retry forces analysis; Stop releases tracks')
+
+            for theme in ['light', 'dark']:
+                is_dark = await page.evaluate('document.documentElement.classList.contains("lt-dark")')
+                if is_dark != (theme == 'dark'):
+                    await page.get_by_role('button', name=f'Switch to {theme} mode', exact=True).click()
+                await page.wait_for_function('(dark)=>document.documentElement.classList.contains("lt-dark") === dark', arg=theme == 'dark')
+                for width in [375, 768, 1440]:
+                    await page.set_viewport_size({'width': width, 'height': 1000})
+                    await asyncio.sleep(.1)
+                    assert await page.evaluate('document.documentElement.scrollWidth <= innerWidth+1'), f'Horizontal overflow {theme}/{width}'
+                    await expect(page.get_by_role('button', name='Upload screenshot', exact=True)).to_be_visible()
+                    report['layouts'].append({'theme': theme, 'width': width, 'passed': True})
+                    if width in [375, 1440]:
+                        await page.screenshot(path=str(OUT / f'aptitude-{theme}-{width}.png'), full_page=True)
+            report['checks'].append('Six light/dark responsive layouts without horizontal overflow')
+
+            await page.get_by_role('button', name='Clear captures and history', exact=True).click()
+            await expect(page.get_by_role('heading', name='Start with the question.', exact=True)).to_be_visible()
+            assert await page.get_by_alt_text('Question screenshot ready for analysis').count() == 0
+            assert await page.get_by_label('View a question', exact=True).count() == 0
+            report['checks'].append('Clear removes retained captures and answers')
+            assert not report['browserErrors'], report['browserErrors']
+            assert not report['stubErrors'], report['stubErrors']
+            report['passed'] = True
+        except Exception as error:
+            report['passed'] = False
+            report['failure'] = str(error)
+            try:
+                await page.screenshot(path=str(OUT / 'failure.png'), full_page=True)
+            except PlaywrightError as screenshot_error:
+                report['failureScreenshotError'] = str(screenshot_error)
+            raise
+        finally:
+            report['requests'] = requests
+            (OUT / 'browser-report.json').write_text(json.dumps(report, indent=2))
+            await browser.close()
+    print(json.dumps({'passed': report['passed'], 'checks': len(report['checks']), 'layouts': len(report['layouts']), 'liveModel': False}))
+
+
+if __name__ == '__main__':
+    asyncio.run(main())

@@ -1,5 +1,6 @@
 'use client'
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { fingerprintFromRgba, normalizeRegion, type NormalizedRegion, type ScreenSample } from '@/lib/aptitude/captureDetector'
 
 // Screen capture for the copilot's vision (Phase 2). Opens getDisplayMedia video
 // (the track useMicStream deliberately discards), holds it in an offscreen
@@ -14,17 +15,40 @@ const LONG_EDGE = 1024
 const JPEG_QUALITY = 0.6
 const DIFF_THUMB = 64 // luma thumbnail size for the perceptual diff
 const DIFF_THRESHOLD = 0.02 // mean-abs-diff (0..1) below which the screen is "unchanged"
+const APTITUDE_LONG_EDGE = 2048
+const APTITUDE_FINGERPRINT_EDGE = 512
+const MAX_APTITUDE_IMAGE_CHARS = 1_150_000
+
+type ScreenRun = {
+  stream: MediaStream | null
+  video: HTMLVideoElement | null
+  onEnded: (() => void) | null
+}
+
+function disposeRun(run: ScreenRun) {
+  if (run.onEnded) run.stream?.getVideoTracks().forEach((track) => track.removeEventListener('ended', run.onEnded!))
+  run.stream?.getTracks().forEach((track) => track.stop())
+  if (run.video) run.video.srcObject = null
+  run.video = null
+  run.stream = null
+}
 
 export function useScreenStream() {
   const [sharing, setSharing] = useState(false)
+  const [starting, setStarting] = useState(false)
+  const [sourceLabel, setSourceLabel] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const lastThumbRef = useRef<Uint8ClampedArray | null>(null)
   const lastFrameRef = useRef<string | null>(null)
+  const runRef = useRef<ScreenRun | null>(null)
+  const mountedRef = useRef(true)
 
   const stop = useCallback(() => {
-    streamRef.current?.getTracks().forEach((t) => t.stop())
+    const run = runRef.current
+    runRef.current = null
+    if (run) disposeRun(run)
     streamRef.current = null
     if (videoRef.current) {
       videoRef.current.srcObject = null
@@ -32,23 +56,55 @@ export function useScreenStream() {
     }
     lastThumbRef.current = null
     lastFrameRef.current = null
-    setSharing(false)
+    if (mountedRef.current) {
+      setSharing(false)
+      setStarting(false)
+      setSourceLabel(null)
+    }
   }, [])
 
+  useEffect(() => {
+    mountedRef.current = true
+    window.addEventListener('pagehide', stop)
+    return () => {
+      mountedRef.current = false
+      window.removeEventListener('pagehide', stop)
+      stop()
+    }
+  }, [stop])
+
   const start = useCallback(async () => {
+    if (!mountedRef.current || runRef.current) return
+    const run: ScreenRun = { stream: null, video: null, onEnded: null }
+    runRef.current = run
+    const current = () => mountedRef.current && runRef.current === run
     setError(null)
+    setStarting(true)
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
+      run.stream = stream
+      // Stop while the browser picker is pending must retire a late grant,
+      // without touching a replacement session that the user already started.
+      if (!current()) { disposeRun(run); return }
+      const track = stream.getVideoTracks()[0]
+      if (!track) throw new Error('No screen video track')
       streamRef.current = stream
       const video = document.createElement('video')
+      run.video = video
       video.srcObject = stream
       video.muted = true
+      video.playsInline = true
+      run.onEnded = () => { if (current()) stop() }
+      track.addEventListener('ended', run.onEnded)
       await video.play()
+      if (!current()) { disposeRun(run); return }
       videoRef.current = video
       // If the user stops sharing via the browser's own control, reflect it.
-      stream.getVideoTracks()[0]?.addEventListener('ended', stop)
       setSharing(true)
+      setStarting(false)
+      setSourceLabel(track.label || 'Shared screen')
     } catch (e) {
+      if (!current()) { disposeRun(run); return }
       // User cancelled the picker, or permission denied — not a hard error.
       setError(e instanceof Error && e.name === 'NotAllowedError' ? null : 'Could not start screen sharing')
       stop()
@@ -99,6 +155,84 @@ export function useScreenStream() {
     return dataUrl
   }, [])
 
+  /**
+   * Always return the current readable frame, even when it is unchanged. The
+   * aptitude detector owns its own baseline; this method never consumes the
+   * legacy chat/code difference gate. Excluded regions are blanked before both
+   * fingerprinting and encoding, so the preview is exactly what is sent.
+   */
+  const sampleFrame = useCallback((options?: { crop?: NormalizedRegion; masks?: NormalizedRegion[] }): ScreenSample => {
+    const capturedAt = Date.now()
+    const unavailable = (reason: string): ScreenSample => ({ kind: 'unavailable', capturedAt, reason })
+    const video = videoRef.current
+    if (!video || !streamRef.current) return unavailable('Screen sharing is stopped.')
+    if (!video.videoWidth || !video.videoHeight) return unavailable('Waiting for the shared screen.')
+    const crop = options?.crop ? normalizeRegion(options.crop) : { x: 0, y: 0, width: 1, height: 1 }
+    if (!crop) return unavailable('The selected capture area is empty.')
+    const sx = Math.floor(crop.x * video.videoWidth)
+    const sy = Math.floor(crop.y * video.videoHeight)
+    const sw = Math.max(1, Math.min(video.videoWidth - sx, Math.ceil(crop.width * video.videoWidth)))
+    const sh = Math.max(1, Math.min(video.videoHeight - sy, Math.ceil(crop.height * video.videoHeight)))
+
+    try {
+      const scale = Math.min(1, APTITUDE_LONG_EDGE / Math.max(sw, sh))
+      let canvas = document.createElement('canvas')
+      canvas.width = Math.max(1, Math.round(sw * scale))
+      canvas.height = Math.max(1, Math.round(sh * scale))
+      const context = canvas.getContext('2d')
+      if (!context) return unavailable('Screen capture is unavailable in this browser.')
+      context.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height)
+      context.fillStyle = '#ffffff'
+      for (const mask of options?.masks ?? []) {
+        const region = normalizeRegion(mask)
+        if (!region) return unavailable('An excluded area is empty or invalid. Adjust it before capturing.')
+        const left = Math.max(sx, region.x * video.videoWidth)
+        const top = Math.max(sy, region.y * video.videoHeight)
+        const right = Math.min(sx + sw, (region.x + region.width) * video.videoWidth)
+        const bottom = Math.min(sy + sh, (region.y + region.height) * video.videoHeight)
+        if (right <= left || bottom <= top) continue
+        // Round outward so no fraction of an excluded edge is transmitted.
+        const x = Math.floor((left - sx) * canvas.width / sw)
+        const y = Math.floor((top - sy) * canvas.height / sh)
+        context.fillRect(x, y,
+          Math.ceil((right - sx) * canvas.width / sw) - x,
+          Math.ceil((bottom - sy) * canvas.height / sh) - y)
+      }
+
+      const fingerprintCanvas = document.createElement('canvas')
+      const fingerprintScale = Math.min(1, APTITUDE_FINGERPRINT_EDGE / Math.max(canvas.width, canvas.height))
+      fingerprintCanvas.width = Math.max(1, Math.round(canvas.width * fingerprintScale))
+      fingerprintCanvas.height = Math.max(1, Math.round(canvas.height * fingerprintScale))
+      const fingerprintContext = fingerprintCanvas.getContext('2d', { willReadFrequently: true })
+      if (!fingerprintContext) return unavailable('Screen comparison is unavailable in this browser.')
+      fingerprintContext.drawImage(canvas, 0, 0, fingerprintCanvas.width, fingerprintCanvas.height)
+      const rgba = fingerprintContext.getImageData(0, 0, fingerprintCanvas.width, fingerprintCanvas.height).data
+      const fingerprint = fingerprintFromRgba(rgba, fingerprintCanvas.width, fingerprintCanvas.height)
+
+      // Keep text/figures readable while respecting the API's bounded image
+      // input. Refuse an oversized image instead of silently omitting it.
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const image = canvas.toDataURL('image/jpeg', 0.9 - attempt * 0.04)
+        if (image.length <= MAX_APTITUDE_IMAGE_CHARS && image.startsWith('data:image/')) {
+          return { kind: 'available', image, capturedAt, width: canvas.width, height: canvas.height,
+            sourceHash: fingerprint.hash, fingerprint }
+        }
+        if (attempt < 2) {
+          const smaller = document.createElement('canvas')
+          smaller.width = Math.max(1, Math.round(canvas.width * 0.8))
+          smaller.height = Math.max(1, Math.round(canvas.height * 0.8))
+          const smallerContext = smaller.getContext('2d')
+          if (!smallerContext) break
+          smallerContext.drawImage(canvas, 0, 0, smaller.width, smaller.height)
+          canvas = smaller
+        }
+      }
+      return unavailable('The capture is too large. Select a smaller question area.')
+    } catch {
+      return unavailable('Could not read the current screen. Try sharing it again.')
+    }
+  }, [])
+
   // Code needs legible punctuation and line numbers. Keep this separate from
   // the low-resolution chat diff gate: a chat grab must not consume repo capture.
   const grabCodeFrame = useCallback((): string | null => {
@@ -114,5 +248,5 @@ export function useScreenStream() {
     return canvas.toDataURL('image/jpeg', 0.94)
   }, [])
 
-  return { sharing, error, start, stop, grabFrame, grabCodeFrame }
+  return { sharing, starting, sourceLabel, error, start, stop, grabFrame, grabCodeFrame, sampleFrame }
 }
