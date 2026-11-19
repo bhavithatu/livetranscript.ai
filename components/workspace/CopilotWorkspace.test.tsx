@@ -38,6 +38,7 @@ describe('standalone AI workspace', () => {
     expect(screen.queryByLabelText('AI panel')).toBeNull()
     expect(screen.queryByRole('region', { name: 'Optional audio context' })).toBeNull()
     expect(mocks.capture.start).not.toHaveBeenCalled()
+    expect((screen.getByText('Other AI modes').closest('details') as HTMLDetailsElement).open).toBe(false)
     expect(within(screen.getByRole('navigation', { name: 'Workspace' })).getByRole('link', { name: 'Aptitude' }).getAttribute('aria-current')).toBe('page')
   })
 
@@ -48,6 +49,7 @@ describe('standalone AI workspace', () => {
     expect(mocks.capture.stop).toHaveBeenCalledOnce()
     expect(window.location.search).toBe('?mode=aptitude')
     expect(await screen.findByRole('region', { name: 'Aptitude question workflow' })).toBeTruthy()
+    fireEvent.click(screen.getByText('Other AI modes'))
     fireEvent.click(screen.getByRole('button', { name: 'General' }))
     expect(screen.queryByRole('region', { name: 'Aptitude question workflow' })).toBeNull()
     expect(screen.getByLabelText('AI panel')).toBeTruthy()

@@ -29,17 +29,17 @@ describe('aptitude visual capture gate', () => {
     const detector = new AptitudeCaptureDetector()
     const first = frame()
     expect(detector.observe(sample(first, 0)).status).toBe('settling')
-    expect(detector.observe(sample(first, 350)).capture).toBeUndefined()
-    expect(detector.observe(sample(first, 700)).capture).toBeUndefined()
-    const accepted = detector.observe(sample(first, 1050))
-    expect(accepted.capture?.capturedAt).toBe(1050)
-    expect(detector.observe(sample(first, 1400))).toEqual({ status: 'watching' })
+    expect(detector.observe(sample(first, 200)).capture).toBeUndefined()
+    expect(detector.observe(sample(first, 400)).capture).toBeUndefined()
+    const accepted = detector.observe(sample(first, 600))
+    expect(accepted.capture?.capturedAt).toBe(600)
+    expect(detector.observe(sample(first, 800))).toEqual({ status: 'watching' })
 
     const second = frame(4)
-    detector.observe(sample(second, 1750))
-    detector.observe(sample(second, 2100))
-    detector.observe(sample(second, 2450))
-    const next = detector.observe(sample(second, 2800)).capture
+    detector.observe(sample(second, 1000))
+    detector.observe(sample(second, 1200))
+    detector.observe(sample(second, 1400))
+    const next = detector.observe(sample(second, 1600)).capture
     expect(next?.sourceHash).toBe(second.hash)
     expect(next?.id).not.toBe(accepted.capture?.id)
   })
@@ -63,12 +63,12 @@ describe('aptitude visual capture gate', () => {
   it('discards a short intermediate question and accepts the final settled frame', () => {
     const detector = new AptitudeCaptureDetector()
     detector.observe(sample(frame(), 0))
-    detector.observe(sample(frame(2), 350))
+    detector.observe(sample(frame(2), 200))
     const final = frame(6)
-    detector.observe(sample(final, 700))
-    expect(detector.observe(sample(final, 1050)).capture).toBeUndefined()
-    expect(detector.observe(sample(final, 1400)).capture).toBeUndefined()
-    expect(detector.observe(sample(final, 1750)).capture?.sourceHash).toBe(final.hash)
+    detector.observe(sample(final, 400))
+    expect(detector.observe(sample(final, 600)).capture).toBeUndefined()
+    expect(detector.observe(sample(final, 800)).capture).toBeUndefined()
+    expect(detector.observe(sample(final, 1000)).capture?.sourceHash).toBe(final.hash)
   })
 
   it('detects a tiny local digit-sized change that a whole-frame mean would hide', () => {
@@ -84,8 +84,34 @@ describe('aptitude visual capture gate', () => {
     const detector = new AptitudeCaptureDetector()
     detector.observe(sample(original, 0))
     detector.observe(sample(original, 800))
-    detector.observe(sample(digit, 1100))
-    expect(detector.observe(sample(digit, 1900)).capture?.sourceHash).toBe('changed-digit')
+    expect(detector.observe(sample(digit, 1100))).toEqual({ status: 'checking' })
+    expect(detector.observe(sample(digit, 1900))).toEqual({ status: 'checking' })
+    expect(detector.observe(sample(digit, 2300)).capture?.sourceHash).toBe('changed-digit')
+  })
+
+  it('does not repeatedly capture a one-second clock, but still captures a persistent digit change', () => {
+    const detector = new AptitudeCaptureDetector()
+    const original = frame(0, 64)
+    detector.observe(sample(original, 0))
+    expect(detector.observe(sample(original, 600)).capture).toBeDefined()
+    const clockFrame = (tick: number) => {
+      const pixels = original.pixels.slice()
+      for (let y = 2; y < 5; y++) for (let x = 2; x < 5; x++) {
+        for (let channel = 0; channel < 3; channel++) pixels[(y * 64 + x) * 3 + channel] = 40 + tick * 30
+      }
+      return { ...original, pixels, hash: `clock-${tick}` }
+    }
+    for (let time = 1000; time < 6000; time += 200) {
+      expect(detector.observe(sample(clockFrame(Math.floor(time / 1000)), time))).toEqual({ status: 'checking' })
+    }
+    const final = clockFrame(6)
+    detector.observe(sample(final, 6000))
+    expect(detector.observe(sample(final, 7000))).toEqual({ status: 'checking' })
+    expect(detector.observe(sample(final, 7200)).capture?.sourceHash).toBe(final.hash)
+    expect(detector.observe(sample(final, 7400))).toEqual({ status: 'watching' })
+    // A subsequent broad question change must withhold the earlier answer,
+    // even after a long run of compact timer changes.
+    expect(detector.observe(sample(frame(5, 64), 7600))).toEqual({ status: 'settling' })
   })
 
   it('detects color-pattern changes even when the two colors have equal luminance', () => {
@@ -141,6 +167,18 @@ describe('aptitude visual capture gate', () => {
     expect(second.id).not.toBe(first.id)
     expect(second.image).toBe(first.image)
     expect(second.sourceHash).toBe(first.sourceHash)
+  })
+
+  it('does not consume a settled fingerprint before a full image is accepted', () => {
+    const detector = new AptitudeCaptureDetector()
+    const first = sample(frame(), 0)
+    detector.observeFingerprint(first)
+    expect(detector.observeFingerprint({ ...first, capturedAt: 600 }).captureReady).toBe(true)
+    detector.observeFingerprint({ kind: 'unavailable', capturedAt: 601, reason: 'capture not ready' })
+    detector.observeFingerprint({ ...first, capturedAt: 800 })
+    expect(detector.observeFingerprint({ ...first, capturedAt: 1400 }).captureReady).toBe(true)
+    detector.accept(first)
+    expect(detector.observeFingerprint({ ...first, capturedAt: 1600 })).toEqual({ status: 'watching' })
   })
 
   it('clamps regions to the shared source and rejects empty/nonfinite selections', () => {

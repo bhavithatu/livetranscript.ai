@@ -1,6 +1,6 @@
 'use client'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { fingerprintFromRgba, normalizeRegion, type NormalizedRegion, type ScreenSample } from '@/lib/aptitude/captureDetector'
+import { fingerprintFromRgba, normalizeRegion, type NormalizedRegion, type ScreenSample, type ScreenFingerprintSample, type AvailableScreenFingerprint } from '@/lib/aptitude/captureDetector'
 import { AptitudeCaptureEncodingError, aptitudeCaptureSize, encodeAptitudeCanvas } from '@/lib/aptitude/captureEncoding'
 
 // Screen capture for the copilot's vision (Phase 2). Opens getDisplayMedia video
@@ -19,6 +19,15 @@ const DIFF_THRESHOLD = 0.02 // mean-abs-diff (0..1) below which the screen is "u
 const APTITUDE_FINGERPRINT_EDGE = 512
 
 type ScreenStreamOptions = { preferNativeResolution?: boolean }
+
+type AptitudeFrameOptions = {
+  crop?: NormalizedRegion
+  masks?: NormalizedRegion[]
+  /** Local area-selector image only. Resample without this flag before analysis. */
+  previewOnly?: boolean
+}
+
+type AptitudeRasterSample = (AvailableScreenFingerprint & { canvas: HTMLCanvasElement }) | Extract<ScreenSample, { kind: 'unavailable' }>
 
 // Soft constraints apply after the user chooses the source. Unlike min/exact,
 // they do not reject smaller screens or narrow the browser's source picker.
@@ -178,14 +187,9 @@ export function useScreenStream({ preferNativeResolution = false }: ScreenStream
    * legacy chat/code difference gate. Excluded regions are blanked before both
    * fingerprinting and encoding, so the preview is exactly what is sent.
    */
-  const sampleFrame = useCallback((options?: {
-    crop?: NormalizedRegion
-    masks?: NormalizedRegion[]
-    /** Local area-selector image only. Resample without this flag before analysis. */
-    previewOnly?: boolean
-  }): ScreenSample => {
+  const readAptitudeRaster = useCallback((options?: AptitudeFrameOptions, fingerprintOnly = false): AptitudeRasterSample => {
     const capturedAt = Date.now()
-    const unavailable = (reason: string): ScreenSample => ({ kind: 'unavailable', capturedAt, reason })
+    const unavailable = (reason: string): Extract<ScreenSample, { kind: 'unavailable' }> => ({ kind: 'unavailable', capturedAt, reason })
     const video = videoRef.current
     if (!video || !streamRef.current) return unavailable('Screen sharing is stopped.')
     if (!video.videoWidth || !video.videoHeight) return unavailable('Waiting for the shared screen.')
@@ -206,49 +210,77 @@ export function useScreenStream({ preferNativeResolution = false }: ScreenStream
         size.width = Math.max(1, Math.round(size.width * previewScale))
         size.height = Math.max(1, Math.round(size.height * previewScale))
       }
-      const canvas = document.createElement('canvas')
-      canvas.width = size.width
-      canvas.height = size.height
-      const context = canvas.getContext('2d')
-      if (!context) return unavailable('Screen capture is unavailable in this browser.')
-      context.imageSmoothingEnabled = true
-      context.imageSmoothingQuality = 'high'
-      context.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height)
-      context.fillStyle = '#ffffff'
+      const masks: NormalizedRegion[] = []
       for (const mask of options?.masks ?? []) {
         const region = normalizeRegion(mask)
         if (!region) return unavailable('An excluded area is empty or invalid. Adjust it before capturing.')
-        const left = Math.max(sx, region.x * video.videoWidth)
-        const top = Math.max(sy, region.y * video.videoHeight)
-        const right = Math.min(sx + sw, (region.x + region.width) * video.videoWidth)
-        const bottom = Math.min(sy + sh, (region.y + region.height) * video.videoHeight)
-        if (right <= left || bottom <= top) continue
-        // Round outward so no fraction of an excluded edge is transmitted.
-        const x = Math.floor((left - sx) * canvas.width / sw)
-        const y = Math.floor((top - sy) * canvas.height / sh)
-        context.fillRect(x, y,
-          Math.ceil((right - sx) * canvas.width / sw) - x,
-          Math.ceil((bottom - sy) * canvas.height / sh) - y)
+        masks.push(region)
       }
 
-      const fingerprintCanvas = document.createElement('canvas')
-      const fingerprintScale = Math.min(1, APTITUDE_FINGERPRINT_EDGE / Math.max(canvas.width, canvas.height))
-      fingerprintCanvas.width = Math.max(1, Math.round(canvas.width * fingerprintScale))
-      fingerprintCanvas.height = Math.max(1, Math.round(canvas.height * fingerprintScale))
+      const render = (width: number, height: number, readFrequently = false) => {
+        const canvas = document.createElement('canvas')
+        canvas.width = width
+        canvas.height = height
+        const context = canvas.getContext('2d', { willReadFrequently: readFrequently })
+        if (!context) return null
+        context.imageSmoothingEnabled = true
+        context.imageSmoothingQuality = 'high'
+        context.drawImage(video, sx, sy, sw, sh, 0, 0, width, height)
+        context.fillStyle = '#ffffff'
+        for (const region of masks) {
+          const left = Math.max(sx, region.x * video.videoWidth)
+          const top = Math.max(sy, region.y * video.videoHeight)
+          const right = Math.min(sx + sw, (region.x + region.width) * video.videoWidth)
+          const bottom = Math.min(sy + sh, (region.y + region.height) * video.videoHeight)
+          if (right <= left || bottom <= top) continue
+          // Round outward in each raster so masked edges are never transmitted.
+          const x = Math.floor((left - sx) * width / sw)
+          const y = Math.floor((top - sy) * height / sh)
+          context.fillRect(x, y, Math.ceil((right - sx) * width / sw) - x, Math.ceil((bottom - sy) * height / sh) - y)
+        }
+        return canvas
+      }
+
+      // Both paths fingerprint the same source crop directly. A poll never
+      // allocates or encodes the native-size image; that work happens once the
+      // local detector has a stable candidate, or on an explicit capture.
+      const fingerprintScale = Math.min(1, APTITUDE_FINGERPRINT_EDGE / Math.max(size.width, size.height))
+      const fingerprintCanvas = render(Math.max(1, Math.round(size.width * fingerprintScale)), Math.max(1, Math.round(size.height * fingerprintScale)), true)
+      if (!fingerprintCanvas) return unavailable('Screen comparison is unavailable in this browser.')
       const fingerprintContext = fingerprintCanvas.getContext('2d', { willReadFrequently: true })
       if (!fingerprintContext) return unavailable('Screen comparison is unavailable in this browser.')
-      fingerprintContext.drawImage(canvas, 0, 0, fingerprintCanvas.width, fingerprintCanvas.height)
       const rgba = fingerprintContext.getImageData(0, 0, fingerprintCanvas.width, fingerprintCanvas.height).data
       const fingerprint = fingerprintFromRgba(rgba, fingerprintCanvas.width, fingerprintCanvas.height)
 
-      const image = encodeAptitudeCanvas(canvas)
-      return { kind: 'available', image, capturedAt, width: canvas.width, height: canvas.height,
+      const canvas = fingerprintOnly || size.width === fingerprintCanvas.width && size.height === fingerprintCanvas.height
+        ? fingerprintCanvas : render(size.width, size.height)
+      if (!canvas) return unavailable('Screen capture is unavailable in this browser.')
+      return { kind: 'available', canvas, capturedAt, width: size.width, height: size.height,
         sourceHash: fingerprint.hash, fingerprint }
     } catch (cause) {
       if (cause instanceof AptitudeCaptureEncodingError) return unavailable(cause.message)
       return unavailable('Could not read the current screen. Try sharing it again.')
     }
   }, [])
+
+  const sampleFingerprint = useCallback((options?: AptitudeFrameOptions): ScreenFingerprintSample => {
+    const sample = readAptitudeRaster(options, true)
+    if (sample.kind === 'unavailable') return sample
+    return { kind: 'available', capturedAt: sample.capturedAt, width: sample.width, height: sample.height,
+      sourceHash: sample.sourceHash, fingerprint: sample.fingerprint }
+  }, [readAptitudeRaster])
+
+  const sampleFrame = useCallback((options?: AptitudeFrameOptions): ScreenSample => {
+    const sample = readAptitudeRaster(options)
+    if (sample.kind === 'unavailable') return sample
+    const { canvas, ...fingerprint } = sample
+    try {
+      return { ...fingerprint, image: encodeAptitudeCanvas(canvas) }
+    } catch (cause) {
+      return { kind: 'unavailable', capturedAt: sample.capturedAt, reason: cause instanceof AptitudeCaptureEncodingError
+        ? cause.message : 'Could not read the current screen. Try sharing it again.' }
+    }
+  }, [readAptitudeRaster])
 
   // Code needs legible punctuation and line numbers. Keep this separate from
   // the low-resolution chat diff gate: a chat grab must not consume repo capture.
@@ -265,5 +297,5 @@ export function useScreenStream({ preferNativeResolution = false }: ScreenStream
     return canvas.toDataURL('image/jpeg', 0.94)
   }, [])
 
-  return { sharing, starting, sourceLabel, error, start, stop, grabFrame, grabCodeFrame, sampleFrame }
+  return { sharing, starting, sourceLabel, error, start, stop, grabFrame, grabCodeFrame, sampleFrame, sampleFingerprint }
 }

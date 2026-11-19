@@ -5,7 +5,10 @@
 Open **Aptitude** from the workspace navigation or visit `/copilot?mode=aptitude`.
 The mode starts without screen or microphone capture. Share a chosen screen,
 upload a PNG/JPEG/WebP screenshot, or load the original practice question.
-Inspect **Capture preview**, then choose **Analyze this capture**. Sharing and
+Inspect **Capture preview**, then choose **Analyze this capture**. For an active
+shared screen, this action captures the current question immediately, including
+while automatic detection is still settling. An uploaded image is analyzed as
+shown; **Retry this capture** explicitly reruns a saved image. Sharing and
 automatic analysis are separate actions. **Start automatic capture** enables
 question-by-question capture for the active source, without another confirmation
 for each frame. Pause, Stop analysis, and Stop sharing remain reachable.
@@ -15,6 +18,13 @@ around the entire question and its choices. Percentage inputs remain available
 for keyboard use. Applying the selection refreshes the detailed capture without
 making a model request. **Enlarge capture** offers a fit view and an actual-pixel
 view so the screenshot can be checked before analysis.
+
+The main controls show sharing, question-area selection and analysis. **Advanced
+options** contains model comparison, question type, precise region settings,
+excluded regions and practice. The other AI modes remain available in a collapsed
+navigation section. **Copy answer** reports success or provides a selectable
+fallback if clipboard access is unavailable; screen sharing cannot click or
+submit the answer on the source website.
 
 The answer card shows the exact choice label and text, a brief worked explanation,
 captured evidence, an explicit verification status, and measured elapsed time.
@@ -34,7 +44,7 @@ website.
 
 ## Compare models
 
-**Analysis mode** defaults to **Single model**. Selecting **Compare models** is an
+**Analysis mode**, under **Advanced options**, defaults to **Single model**. Selecting **Compare models** is an
 explicit choice to send the same previewed screenshot to two or three configured
 image models. Changing this preference pauses automatic capture and cancels the
 active analysis; it does not make a request. Start a manual or automatic analysis
@@ -95,11 +105,24 @@ preview; applying the area always resamples the source at analysis quality.
 Permission acquisition, video startup, replacement streams, browser
 Stop, page exit and unmount use generation-scoped cleanup.
 
+`useScreenStream.sampleFingerprint` renders only a local 512-pixel observation
+without encoding a full screenshot. Full-quality image encoding happens after
+a candidate settles or when the user captures manually. A fresh fingerprint
+check rejects a source that changed between observation and image acquisition.
+Manual analysis updates the automatic detector's accepted baseline so it does
+not immediately trigger a duplicate analysis.
+
 `AptitudeCaptureDetector` keeps separate previous-sample and accepted-image
 baselines. It compares localized RGB differences, waits for stability, and keeps
 watching while analysis is in flight. Equal-luminance color changes are meaningful.
-The initial tuning is 350 ms local sampling and 750 ms stability; this is a
-heuristic configuration, not a measured latency or capture-accuracy promise.
+The tuning is 200 ms local sampling and 450 ms stability for broad changes.
+Changes confined to at most 15% of both fingerprint width and height require
+1,200 ms of stability, which suppresses a one-second ticking clock without
+permanently ignoring a changed digit. Deterministic timer tests produce a first
+settled capture at 600 ms and detect an off-phase broad stable question within
+800 ms; a persistent compact change is captured after 1,200 ms of stability.
+These are scheduling tests, not provider response times or guarantees for
+throttled/background browsers and real devices.
 There is no 15-second pause after a capture in this mode.
 
 The detector recognizes visual changes, not an assessment's private DOM or a
@@ -108,6 +131,11 @@ scrolling and stable loading labels may create candidates. Blank/unavailable or
 continuously changing frames do not complete stability. Cropped or incomplete
 content is handled by the analysis contract. There is no automatic merging of
 separate views into one long question: capture a complete replacement view.
+While a compact change is being checked, the last captured answer remains
+visible with an explicit previous-capture label and a warning that it has not
+been checked against the current screen. Broad changes and blank transitions
+withhold the prior suggestion. Manual Analyze can capture the current screen in
+either state. Crop or exclude unrelated changing areas for the clearest flow.
 
 ## Capture and answer identity
 

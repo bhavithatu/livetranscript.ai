@@ -120,7 +120,10 @@ export function CopilotWorkspace({ initialMode = 'general' }: { initialMode?: Co
 
       <div className="ai-workspace-body min-h-0 flex-1 p-3 sm:p-4">
         {activeMode === 'aptitude' ? <>
-          <div className="mb-4 rounded-xl border border-[color:var(--line)] bg-[color:var(--reader)]"><WorkspaceModeNavigation mode="aptitude" onChange={modeChanged} horizontal /></div>
+          <details className="mb-2 rounded-xl border border-[color:var(--line)] bg-[color:var(--reader)]">
+            <summary className="min-h-11 cursor-pointer px-4 py-3 text-xs font-medium text-[color:var(--muted)]">Other AI modes</summary>
+            <WorkspaceModeNavigation mode="aptitude" onChange={modeChanged} horizontal />
+          </details>
           <AptitudeWorkspace />
         </> : <WorkspacePanel initialMode={activeMode} onModeChange={modeChanged} variant="workspace" getTranscript={capture.getTranscript} />}
       </div>

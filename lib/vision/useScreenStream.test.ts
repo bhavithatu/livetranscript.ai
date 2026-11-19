@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AptitudeCaptureDetector, createAptitudeCapture } from '@/lib/aptitude/captureDetector'
@@ -202,6 +203,44 @@ describe('screen media ownership', () => {
 })
 
 describe('independent aptitude screen samples', () => {
+  it('polls a bounded fingerprint without allocating or encoding the full image', async () => {
+    videoRaster = { width: 3000, height: 60, pixels: new Uint8ClampedArray(3000 * 60 * 4).fill(255) }
+    for (let y = 0; y < 60; y++) for (let x = 1000; x < 1100; x++) paint(videoRaster, x, y, 20)
+    const { result } = renderHook(() => useScreenStream())
+    await act(async () => result.current.start())
+    const observed = result.current.sampleFingerprint()
+    expect(observed.kind).toBe('available')
+    if (observed.kind !== 'available') throw new Error('Expected a local fingerprint')
+    expect([observed.width, observed.height]).toEqual([3000, 60])
+    expect(observed.fingerprint.width).toBe(512)
+    expect('image' in observed).toBe(false)
+    expect(encoded).toHaveLength(0)
+    expect(vi.mocked(HTMLCanvasElement.prototype.getContext).mock.contexts.every((canvas) => canvas instanceof HTMLCanvasElement && canvas.width <= 512)).toBe(true)
+    const captured = result.current.sampleFrame()
+    if (captured.kind !== 'available') throw new Error('Expected a full capture')
+    expect(captured.sourceHash).toBe(observed.sourceHash)
+    expect(encoded).toHaveLength(1)
+    expect(encoded[0].width).toBe(3000)
+  })
+
+  it('uses identical crop and exclusion coordinates for lightweight polling and full captures', async () => {
+    const { result } = renderHook(() => useScreenStream())
+    await act(async () => result.current.start())
+    const options = { crop: { x: 0.25, y: 0, width: 0.75, height: 1 }, masks: [{ x: 0.75, y: 0, width: 0.25, height: 0.25 }] }
+    const observed = result.current.sampleFingerprint(options)
+    const captured = result.current.sampleFrame(options)
+    if (observed.kind !== 'available' || captured.kind !== 'available') throw new Error('Expected readable samples')
+    expect(observed.sourceHash).toBe(captured.sourceHash)
+    for (let y = 0; y < 8; y++) for (let x = 48; x < 64; x++) paint(videoRaster, x, y, 100)
+    const timerTick = result.current.sampleFingerprint(options)
+    if (timerTick.kind !== 'available') throw new Error('Expected a readable fingerprint')
+    expect(timerTick.sourceHash).toBe(observed.sourceHash)
+    expect(encoded).toHaveLength(1)
+    expect(result.current.sampleFingerprint({ crop: { x: 0, y: 0, width: 0, height: 1 } }).kind).toBe('unavailable')
+    act(() => result.current.stop())
+    expect(result.current.sampleFingerprint().kind).toBe('unavailable')
+  })
+
   it('preserves small marks in a source wider than the old 2048px limit', async () => {
     videoRaster = { width: 3000, height: 60, pixels: new Uint8ClampedArray(3000 * 60 * 4) }
     for (let y = 0; y < videoRaster.height; y++) for (let x = 0; x < videoRaster.width; x++) paint(videoRaster, x, y, 255)
@@ -215,7 +254,12 @@ describe('independent aptitude screen samples', () => {
     if (captured.kind !== 'available') throw new Error('Expected a readable native-size capture')
     expect([captured.width, captured.height]).toEqual([3000, 60])
     expect(captured.image).toMatch(/^data:image\/png;base64,/)
-    expect(encoded[0].pixels).toEqual(videoRaster.pixels)
+    const markOffset = (30 * 3000 + 2501) * 4
+    expect(Array.from(encoded[0].pixels.subarray(markOffset, markOffset + 8)))
+      .toEqual([0, 150, 80, 255, 25, 25, 25, 255])
+    // Compare every byte without deep-walking 720,000 typed-array entries in
+    // Vitest, which can exhaust the normal test timeout on a busy CI runner.
+    expect(Buffer.from(encoded[0].pixels).equals(Buffer.from(videoRaster.pixels))).toBe(true)
   })
 
   it('can open a local area-selector preview when the full-resolution analysis capture is too large', async () => {

@@ -122,3 +122,59 @@ accuracy estimate or verification of a user's browser/device.
 
 Clients should reload after this release: new clients accept older responses,
 but an already-open old bundle rejects the new optional numeric-pattern field.
+
+## Live regression evidence — 2026-11-18
+
+Production commit `bdbd52fbbbcc4aa80a26327a30b6fbc389b423c8` passed the bounded
+live-provider release gate with `openai:gpt-6-sol` and
+`anthropic:claude-sonnet-5-5`. Each received the same four original fixtures:
+
+| Original fixture | Both provider results | Total fixture time |
+| --- | --- | --- |
+| Star-point counting | C, 49; correct four/five/seven point inventory | 6.554 s |
+| Increasing differences around a star | B, 36; correct numeric rule | 4.724 s |
+| Quarter-turn grid | D; correct panel and choice cell inventories | 11.804 s |
+| Grid with cropped choices | `needs_capture`, no answer | 6.768 s |
+
+That is six correct individual answers, two appropriate incomplete-capture
+abstentions, zero schema/provider failures and zero evidence-rubric flags across
+eight calls. The conservative comparison selector abstained on all three
+complete questions because the transcriptions did not reconcile exactly; these
+are not six automatically selected comparison answers. This small fixture pilot
+does not establish general assessment accuracy or correctness of every sentence.
+
+An interactive production check used the native Chrome tab picker, then the
+question-area selector. It produced an 872 × 520 capture of the original
+increasing-differences fixture and a correct B, 36 answer in 6.0 s. An uploaded
+1080 × 640 star-point fixture produced C, 49 in 7.8 s; Actual pixels displayed
+the original 1080 × 640 dimensions. Selecting that older history entry restored
+its image, timestamp and answer together; returning to latest restored the
+newer capture. Applying a crop alone did not start analysis. Sharing was stopped
+afterward. These checks cover this Chrome environment, not Safari on the user's
+Mac or every supported device.
+
+All CI gates on that commit passed after one main Quality rerun: 1,292 unit
+tests across 176 files; 85 offline Aptitude checks (two opt-ins skipped); 21
+Aptitude browser checks across six layouts; repository QA; Windows; and the
+existing UI suite's 42 layouts and 28 live layouts. The initial Quality attempt
+had one five-second raster-test timeout and 1,291 passes. Its full-byte assertion
+used a generic matcher over 720,000 entries. The follow-up keeps the same image,
+checks every byte with native byte equality, and explicitly verifies adjacent
+one-pixel colors. The isolated test fell from 2,182 ms to 214 ms locally without
+changing timeouts or reducing its fixture.
+
+## Capture responsiveness and simpler controls follow-up
+
+The watcher now polls a bounded local fingerprint and encodes a full native
+image only after a stable change. Regression tests cover source changes between
+observation and full capture, failed acquisition without consuming a candidate,
+manual-capture rebasing, timer changes, persistent small changes and cancellation.
+Manual Analyze always captures the current shared source, including while it is
+settling, and never silently resends an old frame after acquisition fails.
+
+The default screen moves model/type selection and precise region settings into
+Advanced options and collapses navigation to other AI modes. Saved history uses
+one selector. Copy answer reports clipboard success or exposes a selectable
+fallback; it does not claim control of another website. Focused UI tests cover
+these actions. The exact combined commit's full-suite and browser results are
+recorded in the linked PR checks; stubbed browser timing is not provider latency.

@@ -26,7 +26,7 @@ function Check({ verification }: { verification: AptitudeVerification }) {
   </div>
 }
 
-function ModelCard({ candidate, selected, expanded }: { candidate: AptitudeComparisonCandidate; selected: boolean; expanded: boolean }) {
+function ModelCard({ candidate, selected }: { candidate: AptitudeComparisonCandidate; selected: boolean }) {
   const observation = candidate.observation
   const answer = observation?.answer
   const choices = observation?.question?.options.filter((option) => answer?.selectedOptionIds.includes(option.id)) ?? []
@@ -49,7 +49,7 @@ function ModelCard({ candidate, selected, expanded }: { candidate: AptitudeCompa
     {observation?.message && <p className={styles.candidateMessage}>{observation.message}</p>}
     {candidate.error && <p className={styles.candidateError}>{candidate.error}</p>}
     {candidate.verification && <Check verification={candidate.verification} />}
-    {observation && <details className={styles.candidateDetails} open={expanded}>
+    {observation && <details className={styles.candidateDetails}>
       <summary>Explanation & evidence</summary>
       {answer?.workedExplanation.length ? <ol>{answer.workedExplanation.map((step, index) => <li key={index}>{step}</li>)}</ol> : null}
       {answer?.calculation && <p className={styles.candidateCalculation}><span>Stated calculation</span><code>{answer.calculation.expression} = {answer.calculation.claimedValue}</code></p>}
@@ -82,10 +82,10 @@ export function AptitudeComparison({ comparison, children }: { comparison: Compa
           ? 'No answer is selected. The models disagree; inspect their individual reasoning and the captured evidence.'
           : 'No answer is selected. Too few usable model results are available to compare.'}</p>
       {resolved && <p className={styles.muted}>Agreement helps compare responses; it does not prove the answer is correct.</p>}
-      {comparison.notes.length > 0 && <ul>{comparison.notes.map((note, index) => <li key={index}>{note}</li>)}</ul>}
+      {comparison.notes.length > 0 && <details className={styles.checkDetails}><summary>How these answers were compared</summary><ul>{comparison.notes.map((note, index) => <li key={index}>{note}</li>)}</ul></details>}
     </div>
     {resolved ? children : null}
     <div className={styles.modelResultsHeading}><h3>Individual model results</h3><p>Each model request uses the same captured image. Its answer, checks and response time stay together.</p></div>
-    <div className={styles.modelGrid}>{comparison.candidates.map((candidate) => <ModelCard key={candidate.modelId} candidate={candidate} selected={resolved && candidate.modelId === comparison.selectedModelId} expanded={!resolved} />)}</div>
+    <div className={styles.modelGrid}>{comparison.candidates.map((candidate) => <ModelCard key={candidate.modelId} candidate={candidate} selected={resolved && candidate.modelId === comparison.selectedModelId} />)}</div>
   </section>
 }

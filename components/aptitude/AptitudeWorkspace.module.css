@@ -6,7 +6,7 @@
 .controlHeading p { margin-top: 5px; max-width: 620px; font-size: 13px; line-height: 1.6; color: var(--muted); }
 .category, .historySelect { display: flex; flex-direction: column; gap: 6px; color: var(--muted); font-size: 12px; font-weight: 550; }
 .category { min-width: 220px; }
-.analysisOptions { display: flex; flex-wrap: wrap; gap: 12px; }
+.analysisOptions { display: flex; flex-wrap: wrap; gap: 12px; margin: 12px 0; max-width: 600px; }
 .analysisOptions .category { min-width: 180px; flex: 1 1 180px; }
 .modeDescription, .comparisonDisclosure { color: var(--muted); font-size: 12px; line-height: 1.7; margin: 0 0 16px; max-width: 840px; }
 .comparisonDisclosure { color: var(--ink); background: var(--surface-soft, var(--paper)); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
@@ -62,7 +62,13 @@
 .timing { white-space: nowrap; font-size: 12px; font-family: var(--font-mono), monospace; color: var(--muted); margin-top: 5px; }
 .answerValue { padding: 24px 0 22px; margin-top: 8px; border-bottom: 1px solid var(--line); }
 .answerValue h3 { font-size: clamp(25px, 3vw, 38px); line-height: 1.2; color: var(--signal); font-weight: 650; letter-spacing: -.03em; margin-top: 10px; overflow-wrap: anywhere; }
-.answerValue > p:last-child { margin-top: 12px; font-size: 15px; line-height: 1.65; }
+.answerValue > h3 + p { margin-top: 12px; font-size: 15px; line-height: 1.65; }
+.answerActions { margin-top: 16px; }
+.answerActions > button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 42px; padding: 10px 16px; font-size: 13px; border-radius: 9px; }
+.copyFallback { display: flex; flex-direction: column; gap: 7px; margin-top: 12px; font-size: 12px; color: var(--muted); }
+.copyFallback textarea { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--reader); resize: vertical; font-size: 14px; }
+.checkDetails { margin-top: 10px; }
+.checkDetails summary { min-height: 32px; padding: 6px 0; cursor: pointer; font-size: 12px; font-weight: 600; }
 .explanation, .verification { padding: 22px 0; border-bottom: 1px solid var(--line); }
 .explanation h3, .verification h3, .notice h3, .observed h3 { font-size: 14px; font-weight: 650; }
 .explanation ol { padding-left: 22px; margin-top: 12px; }

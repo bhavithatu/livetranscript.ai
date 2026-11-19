@@ -172,6 +172,11 @@ async def main():
             await button.click()
             await wait_for_requests(expected)
 
+        async def set_advanced(opened):
+            summary = page.get_by_text('Advanced options', exact=True)
+            if await summary.evaluate('(element) => element.parentElement.open') != opened:
+                await summary.click()
+
         try:
             # An empty body cannot reach a model even if this server was
             # accidentally launched with an auth preview bypass. Fail early in
@@ -189,7 +194,11 @@ async def main():
             assert await page.evaluate('window.__aptitudeScreen.calls()') == {'display': 0, 'microphone': 0}
             report['checks'].append('Tools catalog and direct Aptitude navigation; no microphone starts')
 
+            await expect(page.get_by_role('combobox', name='Analysis mode', exact=True)).not_to_be_visible()
+            await expect(page.get_by_role('region', name='AI modes', exact=True)).not_to_be_visible()
+            await set_advanced(True)
             await page.get_by_role('button', name='Try a practice question', exact=True).click()
+            await set_advanced(False)
             preview = page.get_by_alt_text('Question screenshot ready for analysis')
             await expect(preview).to_be_visible()
             sample = await preview.get_attribute('src')
@@ -232,6 +241,11 @@ async def main():
             await expect(page.get_by_role('region', name='Worked explanation')).to_be_visible()
             await expect(page.get_by_role('region', name='Answer check')).to_be_visible()
             report['checks'].append('Capture → request → validated choice, worked explanation and check (provider stub)')
+            await page.context.grant_permissions(['clipboard-read', 'clipboard-write'], origin=BASE)
+            await page.get_by_role('button', name='Copy answer', exact=True).click()
+            await expect(page.get_by_role('button', name='Answer copied', exact=True)).to_be_visible()
+            assert await page.evaluate('navigator.clipboard.readText()') == 'B — 25%'
+            report['checks'].append('Copy answer writes the displayed choice to the clipboard and confirms success')
 
             state['status'] = 'needs_capture'
             await click_for_request(page.get_by_role('button', name='Retry this capture', exact=True))
@@ -351,7 +365,9 @@ async def main():
             await page.evaluate('window.__aptitudeScreen.show(4)')
             await asyncio.sleep(1.4)
             assert len(requests) == count
-            await click_for_request(page.get_by_role('button', name='Capture now', exact=True))
+            previous_hash = requests[-1]['imageHash']
+            await click_for_request(page.get_by_role('button', name='Analyze this capture', exact=True))
+            assert requests[-1]['imageHash'] != previous_hash, 'Analyze must capture the changed live question, not resend its old preview'
             await expect(page.get_by_role('heading', name='B — 100%', exact=True)).to_be_visible()
             await page.get_by_role('button', name='Capture now', exact=True).click()
             await expect(page.get_by_role('heading', name='B — 100%', exact=True)).to_be_visible()
@@ -398,6 +414,7 @@ async def main():
             # These are real product screens with explicit synthetic responses.
             # Switching mode must not send the image before the user's next action.
             state['number'] = 0
+            await set_advanced(True)
             await page.get_by_role('button', name='Try a practice question', exact=True).click()
             strategy = page.get_by_role('combobox', name='Analysis mode', exact=True)
             await expect(strategy).to_have_value('single')
@@ -469,9 +486,12 @@ async def main():
             await expect(page.get_by_role('heading', name='B — 25%', exact=True)).to_be_visible()
             await expect(comparison.get_by_role('article')).to_have_count(3)
             await expect(comparison.get_by_role('article', name='openai:gpt-4.1-mini', exact=True).locator('p').filter(has_text=re.compile(r'^A — 20%$'))).to_be_visible()
+            await comparison.get_by_text('How these answers were compared', exact=True).click()
             await expect(comparison.get_by_text('Sample model responses for this screen preview. No live provider calls or model latency benchmark.', exact=True)).to_be_visible()
+            await comparison.get_by_text('How these answers were compared', exact=True).click()
             report['checks'].append('Two-to-one agreement is labeled as a majority; dissent and arithmetic-check limits remain visible')
 
+            await set_advanced(False)
             for theme in ['light', 'dark']:
                 is_dark = await page.evaluate('document.documentElement.classList.contains("lt-dark")')
                 if is_dark != (theme == 'dark'):

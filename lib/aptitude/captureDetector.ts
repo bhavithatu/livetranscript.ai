@@ -19,11 +19,16 @@ export type AvailableScreenSample = {
   fingerprint: FrameFingerprint
 }
 
-export type ScreenSample = AvailableScreenSample | {
+export type UnavailableScreenSample = {
   kind: 'unavailable'
   capturedAt: number
   reason: string
 }
+
+/** Local-only observation; it cannot be submitted as an analysis capture. */
+export type AvailableScreenFingerprint = Omit<AvailableScreenSample, 'image'>
+export type ScreenFingerprintSample = AvailableScreenFingerprint | UnavailableScreenSample
+export type ScreenSample = AvailableScreenSample | UnavailableScreenSample
 
 export type AptitudeCapture = {
   id: string
@@ -34,7 +39,7 @@ export type AptitudeCapture = {
   sourceHash: string
 }
 
-export type AptitudeCaptureStatus = 'paused' | 'watching' | 'settling' | 'captured' | 'unavailable'
+export type AptitudeCaptureStatus = 'paused' | 'watching' | 'checking' | 'settling' | 'captured' | 'unavailable'
 
 let captureSequence = 0
 export function createAptitudeCapture(sample: AvailableScreenSample): AptitudeCapture {
@@ -115,9 +120,42 @@ export function fingerprintsDiffer(a: FrameFingerprint, b: FrameFingerprint): bo
   return total / Math.max(1, a.pixels.length) >= 2.5
 }
 
+/**
+ * A clock tick and a changed question digit can look identical locally. Keep
+ * both detectable, but require a compact change to remain still across a full
+ * one-second clock tick before starting another paid analysis. Broad question
+ * changes retain the shorter settling window.
+ */
+function isLocalizedChange(a: FrameFingerprint, b: FrameFingerprint): boolean {
+  if (a.width !== b.width || a.height !== b.height || a.pixels.length !== b.pixels.length) return false
+  let left = a.width
+  let top = a.height
+  let right = -1
+  let bottom = -1
+  for (let index = 0; index < a.pixels.length; index += 3) {
+    if (Math.max(Math.abs(a.pixels[index] - b.pixels[index]),
+      Math.abs(a.pixels[index + 1] - b.pixels[index + 1]),
+      Math.abs(a.pixels[index + 2] - b.pixels[index + 2])) < 20) continue
+    const pixel = index / 3
+    const x = pixel % a.width
+    const y = Math.floor(pixel / a.width)
+    left = Math.min(left, x)
+    right = Math.max(right, x)
+    top = Math.min(top, y)
+    bottom = Math.max(bottom, y)
+    if (right - left + 1 > a.width * 0.15 || bottom - top + 1 > a.height * 0.15) return false
+  }
+  return right >= left && bottom >= top
+}
+
 export type CaptureObservation = {
   status: Exclude<AptitudeCaptureStatus, 'paused'>
   capture?: AptitudeCapture
+}
+
+export type FingerprintObservation = {
+  status: Exclude<AptitudeCaptureStatus, 'paused'>
+  captureReady?: true
 }
 
 /** Deterministic state machine; no network, browser APIs, or global timers. */
@@ -127,7 +165,7 @@ export class AptitudeCaptureDetector {
   private stableSince: number | null = null
   private stableSamples = 0
 
-  constructor(private readonly settleMs = 750) {}
+  constructor(private readonly settleMs = 450) {}
 
   reset() {
     this.previous = null
@@ -144,6 +182,26 @@ export class AptitudeCaptureDetector {
   }
 
   observe(sample: ScreenSample): CaptureObservation {
+    const observation = this.observeFingerprint(sample)
+    if (!observation.captureReady || sample.kind !== 'available') return { status: observation.status }
+    this.accept(sample)
+    return { status: 'captured', capture: createAptitudeCapture(sample) }
+  }
+
+  /** A manual analysis and an automatic one share the same novelty baseline. */
+  accept(sample: AvailableScreenFingerprint) {
+    this.accepted = sample.fingerprint
+    this.previous = sample.fingerprint
+    this.stableSince = null
+    this.stableSamples = 0
+  }
+
+  /**
+   * Mark a candidate ready without accepting it yet. The caller must acquire a
+   * fresh full-quality image and confirm it still matches before accepting.
+   * Sampling an unavailable image must not consume an uncaptured question.
+   */
+  observeFingerprint(sample: ScreenFingerprintSample): FingerprintObservation {
     if (sample.kind === 'unavailable') {
       this.pause()
       return { status: 'unavailable' }
@@ -163,19 +221,22 @@ export class AptitudeCaptureDetector {
       this.stableSamples = 0
       return { status: 'watching' }
     }
+    const localized = this.accepted !== null && isLocalizedChange(this.accepted, current)
+    // Compact changes can be a ticking clock. Expose that uncertainty without
+    // telling the UI that the whole question is already transitioning; any
+    // retained answer must still be labeled as belonging to the saved capture.
+    const pendingStatus = localized ? 'checking' : 'settling'
     if (changing || this.stableSince === null || sample.capturedAt < this.stableSince) {
       this.stableSince = sample.capturedAt
       this.stableSamples = 1
-      return { status: 'settling' }
+      return { status: pendingStatus }
     }
 
     this.stableSamples++
-    if (this.stableSamples < 2 || sample.capturedAt - this.stableSince < this.settleMs) {
-      return { status: 'settling' }
+    const settleMs = localized ? Math.max(this.settleMs, 1200) : this.settleMs
+    if (this.stableSamples < 2 || sample.capturedAt - this.stableSince < settleMs) {
+      return { status: pendingStatus }
     }
-    this.accepted = current
-    this.stableSince = null
-    this.stableSamples = 0
-    return { status: 'captured', capture: createAptitudeCapture(sample) }
+    return { status: 'captured', captureReady: true }
   }
 }

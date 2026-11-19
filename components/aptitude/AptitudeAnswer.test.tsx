@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { parseAptitudeResult, type AptitudeResult } from '@/lib/aptitude/schema'
 import type { AptitudeSessionEntry } from '@/lib/aptitude/useAptitudeSession'
@@ -61,8 +61,9 @@ describe('model comparison results', () => {
     const second = within(region).getByRole('article', { name: 'anthropic:test-model-b' })
     expect(within(first).getByText('B — 25%', { selector: 'p' })).toBeTruthy()
     expect(within(second).getByText('A — 20%', { selector: 'p' })).toBeTruthy()
-    expect((first.querySelector('details') as HTMLDetailsElement).open).toBe(true)
-    expect((second.querySelector('details') as HTMLDetailsElement).open).toBe(true)
+    expect((first.querySelector('details') as HTMLDetailsElement).open).toBe(false)
+    expect((second.querySelector('details') as HTMLDetailsElement).open).toBe(false)
+    expect(screen.queryByRole('button', { name: 'Copy answer' })).toBeNull()
     expect(region.querySelector('[data-selected="true"]')).toBeNull()
   })
 
@@ -113,5 +114,31 @@ describe('model comparison results', () => {
     expect(screen.queryByText('25% — 25%')).toBeNull()
     expect(screen.getByRole('heading', { name: 'Calculation matches' })).toBeTruthy()
     expect(screen.queryByRole('heading', { name: 'Check passed' })).toBeNull()
+  })
+
+  it('copies the displayed resolved answer and resets feedback for a different capture', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    const view = render(<AptitudeAnswer entry={entry(base)} index={0} {...actions} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Copy answer' }))
+    await screen.findByRole('button', { name: 'Answer copied' })
+    expect(writeText).toHaveBeenCalledWith('B — 25%')
+    expect(screen.getByRole('status').textContent).toContain('Copied. Choose or paste it')
+    view.rerender(<AptitudeAnswer entry={{ ...entry(base), id: 'next-capture' }} index={1} {...actions} />)
+    expect(screen.getByRole('button', { name: 'Copy answer' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Answer copied' })).toBeNull()
+  })
+
+  it('provides a selected manual-copy field if the browser denies clipboard access', async () => {
+    const writeText = vi.fn().mockRejectedValue(new Error('Not allowed'))
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    render(<AptitudeAnswer entry={entry(base)} index={0} {...actions} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Copy answer' }))
+    const field = await screen.findByRole('textbox', { name: 'Answer to copy' }) as HTMLTextAreaElement
+    expect(field.value).toBe('B — 25%')
+    await waitFor(() => expect(field.selectionEnd).toBe(field.value.length))
+    expect(field.selectionStart).toBe(0)
+    expect(screen.getByRole('status').textContent).toContain('Clipboard access is unavailable')
+    expect(screen.queryByRole('button', { name: 'Answer copied' })).toBeNull()
   })
 })
