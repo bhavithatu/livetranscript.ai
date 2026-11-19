@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { calculateExpression, numericAnswer, numbersAgree } from './calculator'
+import { calculateExpression, calculationClaimAgrees, numericAnswer, numbersAgree } from './calculator'
 import { verifyAptitudeObservation } from './verify'
 import { solvedObservation } from './testFixtures'
 
@@ -15,6 +15,43 @@ describe('restricted arithmetic verification', () => {
   })
   it('rejects code, division by zero and resource amplification', () => {
     for (const expression of ['process.exit()', '1/0', '0^0', '1 2', '1e9', '2^1000', '9^9^9', '2(3)', '(()', '1+'.repeat(200), '('.repeat(25) + '1' + ')'.repeat(25)]) expect(() => calculateExpression(expression)).toThrow()
+  })
+  it('accepts tiny decimal truncation in an unrounded calculation claim only', () => {
+    const repeating = calculateExpression('(24-18)/18*100').value
+    expect(calculationClaimAgrees(repeating, 33.3333333333, null)).toBe(true)
+    expect(calculationClaimAgrees(1 / 3, 0.333333333333, null)).toBe(true)
+    expect(calculationClaimAgrees(-1 / 3, -0.333333333333, null)).toBe(true)
+    expect(numbersAgree(repeating, 33.3333333333)).toBe(false)
+    expect(calculationClaimAgrees(repeating, 33.3333333333, 10)).toBe(false)
+  })
+  it.each([[0, 1e-12], [1e-12, 2e-12], [1e12, 1e12 + 1], [33.333333333333336, 33.333], [0.25, 0.250001], [1, Infinity], [NaN, 1]])('rejects materially different or invalid calculation claims %s and %s', (computed, claimed) => {
+    expect(calculationClaimAgrees(computed, claimed, null)).toBe(false)
+  })
+  it.each([[4e15, 4e15 + 1], [1e15, 1e15 + 0.5], [Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER - 1], [Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER + 1], [Number.MAX_SAFE_INTEGER + 1, Number.MAX_SAFE_INTEGER + 1]])('never equates differing large values or unsafe values %s and %s', (computed, claimed) => {
+    expect(numbersAgree(computed, claimed)).toBe(false)
+    expect(calculationClaimAgrees(computed, claimed, null)).toBe(false)
+  })
+  it('checks exact rational bounds before conversion can round them into range', () => {
+    expect(calculateExpression('9007199254740991').value).toBe(Number.MAX_SAFE_INTEGER)
+    expect(calculateExpression('-9007199254740991').value).toBe(-Number.MAX_SAFE_INTEGER)
+    expect(numbersAgree(Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER)).toBe(true)
+    for (const expression of ['9007199254740991.1', '-9007199254740991.1', '9007199254740991+1/10']) expect(() => calculateExpression(expression)).toThrow('safe display range')
+  })
+  it('keeps the selected answer when only a repeating intermediate calculation claim is truncated', () => {
+    const item = solvedObservation()
+    item.answer!.value = 'Aspen'; item.answer!.unit = null
+    item.question!.options = [{ id: 'A', label: 'A', text: 'Birch' }, { id: 'B', label: 'B', text: 'Aspen' }]
+    item.answer!.calculation = { expression: '(24-18)/18*100', claimedValue: 33.3333333333, decimalPlaces: null }
+    expect(verifyAptitudeObservation(item)).toMatchObject({ observation: { status: 'solved' }, verification: { outcome: 'passed' } })
+  })
+  it('does not let claim tolerance relax exact answer or close distractor matching', () => {
+    const item = solvedObservation()
+    item.answer!.calculation = { expression: '25', claimedValue: 25.0000000005, decimalPlaces: null }
+    item.answer!.value = '25.0000000005'
+    expect(verifyAptitudeObservation(item).verification.outcome).toBe('disagreed')
+    item.answer!.value = '25'
+    item.question!.options[1].text = '25.0000000005%'
+    expect(verifyAptitudeObservation(item).verification.outcome).toBe('disagreed')
   })
   it('parses only standalone numeric values', () => {
     expect(numericAnswer('£1,250.50')).toBe(1250.5)

@@ -88,13 +88,31 @@ export function calculateExpression(expression: string, decimalPlaces: number | 
     const rounded = scaled / result.d + ((scaled % result.d) * BigInt(2) >= result.d ? ONE : ZERO)
     result = rational(result.n < ZERO ? -rounded : rounded, scale)
   }
+  // Test the rational before conversion: MAX_SAFE_INTEGER + 0.1 can round
+  // down to MAX_SAFE_INTEGER in Number and otherwise pass a numeric guard.
+  if (abs(result.n) > BigInt(Number.MAX_SAFE_INTEGER) * result.d) throw new Error('Result is outside the safe display range')
   const value = Number(result.n) / Number(result.d)
   if (!Number.isFinite(value) || Math.abs(value) > Number.MAX_SAFE_INTEGER) throw new Error('Result is outside the safe display range')
   return { value, exact: result.d === ONE ? result.n.toString() : `${result.n}/${result.d}` }
 }
 
 export function numbersAgree(a: number, b: number): boolean {
-  return Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) <= Number.EPSILON * Math.max(Math.abs(a), Math.abs(b), Number.MIN_VALUE) * 4
+  if (!safeNumber(a) || !safeNumber(b)) return false
+  if (Number.isInteger(a) && Number.isInteger(b)) return a === b
+  return Math.abs(a - b) <= Math.min(1e-9, Number.EPSILON * Math.max(Math.abs(a), Math.abs(b), Number.MIN_VALUE) * 4)
+}
+
+const safeNumber = (value: number) => Number.isFinite(value) && Math.abs(value) <= Number.MAX_SAFE_INTEGER
+
+/** A repeating rational cannot always be serialized as an exact decimal claim.
+ * Allow tiny representation truncation only for an unrounded calculation claim;
+ * answer/choice mapping and explicitly rounded results remain strict. The absolute
+ * cap prevents relative tolerance from accepting large-integer errors. */
+export function calculationClaimAgrees(computed: number, claimed: number, decimalPlaces: number | null): boolean {
+  if (numbersAgree(computed, claimed)) return true
+  if (decimalPlaces !== null || !safeNumber(computed) || !safeNumber(claimed)) return false
+  const tolerance = Math.min(1e-9, 1e-10 * Math.max(Math.abs(computed), Math.abs(claimed)))
+  return Math.abs(computed - claimed) <= tolerance
 }
 
 /** Deliberately rejects sentences, ranges, expressions, and numbers hidden in prose. */

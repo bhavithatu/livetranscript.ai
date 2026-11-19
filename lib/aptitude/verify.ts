@@ -1,4 +1,4 @@
-import { calculateExpression, numericAnswer, numbersAgree } from './calculator'
+import { calculateExpression, calculationClaimAgrees, numericAnswer, numbersAgree } from './calculator'
 import type { AptitudeObservation, AptitudeVerification } from './schema'
 import { predictNumericPattern } from './numericPattern'
 
@@ -18,7 +18,7 @@ export function verifyAptitudeObservation(input: AptitudeObservation): { observa
       verification: { method: 'arithmetic', outcome: 'disagreed', notes: ['The calculation is invalid, the numeric rule does not fit every transcribed transition, or a check exceeds the supported limits.'] } }
   }
   const mismatches: string[] = []
-  if (calculation && value !== null && !numbersAgree(value, calculation.claimedValue)) mismatches.push('The expression does not equal the proposed result.')
+  if (calculation && value !== null && !calculationClaimAgrees(value, calculation.claimedValue, calculation.decimalPlaces)) mismatches.push('The expression does not equal the proposed result.')
   if (patternValue !== null && value !== null && !numbersAgree(value, patternValue)) mismatches.push('The final calculation does not follow the stated numeric pattern.')
   const checkedValue = patternValue ?? value!
   const answerValue = numericAnswer(input.answer.value, input.answer.unit)
