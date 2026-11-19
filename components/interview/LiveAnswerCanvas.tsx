@@ -11,13 +11,21 @@ import { useCandidateProfile } from '@/lib/copilot/useCandidateProfile'
 import { useMeContext } from '@/lib/copilot/useMeContext'
 import { useModeContexts } from '@/lib/copilot/useModeContexts'
 import type { CopilotMode } from '@/lib/copilot/modes'
+import { useBehavioralSession } from '@/lib/behavioral/useBehavioralSession'
+import { BehavioralContextPanel } from '@/components/behavioral/BehavioralContextPanel'
+import { serializeBehavioralSources } from '@/lib/behavioral/sources'
+import { retrieveAnswerSources } from '@/lib/copilot/answerSources'
+import { createBehavioralTranscriptBoundary } from '@/lib/behavioral/roundTranscript'
 import styles from './Interview.module.css'
 
 const MODE_LABEL: Record<string, string> = { general: 'General', coding: 'Coding', systemDesign: 'System Design', behavioral: 'Behavioral', repoInterview: 'Repository' }
 
 export function LiveAnswerCanvas({ getTranscript, getQuestionTranscript = getTranscript }: { getTranscript: () => string; getQuestionTranscript?: () => string }) {
   const responsePreferences = useResponsePreferences()
-  const feed = useAnswerFeed(responsePreferences.preferences)
+  // A Live interview owns its own round; a newly started interview mounts a fresh
+  // instance rather than importing the answers from a different interview.
+  const behavioral = useBehavioralSession({ scope: 'live-interview' })
+  const feed = useAnswerFeed(responsePreferences.preferences, behavioral)
   const router = useOrchestrationRouter()
   const profile = useCandidateProfile()
   const me = useMeContext()
@@ -28,6 +36,8 @@ export function LiveAnswerCanvas({ getTranscript, getQuestionTranscript = getTra
   const [error, setError] = useState<string | null>(null)
   const generation = useRef(0)
   const mounted = useRef(true)
+  const [roundTranscriptBoundary] = useState(createBehavioralTranscriptBoundary)
+  const [behavioralTranscriptNotice, setBehavioralTranscriptNotice] = useState<string | null>(null)
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; generation.current += 1 } }, [])
 
   const answerQuestion = useCallback(async (question: string) => {
@@ -42,23 +52,30 @@ export function LiveAnswerCanvas({ getTranscript, getQuestionTranscript = getTra
       const routedMode = routed.classification?.mode ?? 'general'
       const answerMode = routedMode === 'repoInterview' || routedMode === 'aptitude' ? 'general' : routedMode
       setMode(answerMode)
+      if (answerMode === 'behavioral' && !behavioral.ready) throw new Error('Behavioral context is still loading. Try again in a moment.')
       const context = contexts[answerMode]
-      const retrieved = answerMode === 'behavioral' && context.storyCount > 0
-        ? await context.retrieveStories(question, 2).then((stories) => stories.map((story) => `STORY — ${story.title}\n${story.fullText}`).join('\n\n'))
-        : context.count > 0 ? await context.retrieve(question) : null
+      const retrieved = await retrieveAnswerSources(context, answerMode, question)
       if (!valid()) return
-      const grounded = [
+      const grounded = answerMode === 'behavioral' ? serializeBehavioralSources([
+        { label: 'Current company web references; not candidate experience', text: routed.webContext || '' },
+        { label: 'Provided candidate resume and target job description', text: profile.contextBlock() || '' },
+        { label: 'Candidate microphone context; transcription may contain errors', text: me.getMeContext() || '' },
+        ...retrieved,
+      ].filter((source) => source.text.trim())) : [
         routed.webContext && `LIVE WEB RESULTS:\n${routed.webContext}`,
         profile.contextBlock(),
         me.getMeContext() && `What I said: ${me.getMeContext()}`,
-        retrieved,
+        ...retrieved.map((source) => source.text),
       ].filter(Boolean).join('\n\n') || null
       setRouting(false)
-      await feed.answer(question, answerMode, grounded, null, context.instructions || null, getTranscript())
+      const transcript = getTranscript()
+      const currentTranscript = answerMode === 'behavioral' ? roundTranscriptBoundary.read(transcript) : { text: transcript, uncertain: false }
+      if (currentTranscript.uncertain) setBehavioralTranscriptNotice('The audio window changed after the new round started. Ambiguous speech was excluded; record any missing facts or answers explicitly.')
+      await feed.answer(question, answerMode, grounded, null, context.instructions || null, currentTranscript.text)
     } catch (failure) {
       if (valid()) setError(failure instanceof Error ? failure.message : 'Could not prepare this question. Try again.')
     } finally { if (valid()) setRouting(false) }
-  }, [router, contexts, profile, me, feed, getTranscript])
+  }, [router, contexts, profile, me, feed, getTranscript, behavioral, roundTranscriptBoundary])
 
   const proactive = useProactive(!paused, getQuestionTranscript, answerQuestion, { latestWins: true })
   const current = feed.current
@@ -69,17 +86,35 @@ export function LiveAnswerCanvas({ getTranscript, getQuestionTranscript = getTra
     setPaused((value) => !value)
   }
 
+  function pauseForContextChange() {
+    generation.current += 1
+    feed.stop()
+    setRouting(false)
+    setPaused(true)
+  }
+
+  function newBehavioralRound() {
+    pauseForContextChange()
+    roundTranscriptBoundary.reset(getTranscript())
+    setBehavioralTranscriptNotice(null)
+    me.clearContext()
+    feed.clear('behavioral')
+    contexts.behavioral.resetSpent()
+    behavioral.reset()
+  }
+
   return <div className={styles.answerCanvas}>
     <div className={styles.answerToolbar}>
       <div className={styles.answerTags}><span className={`${styles.answerTag} ${styles.answerTagActive}`}>{paused ? 'Detection paused' : 'Automatic questions'}</span><span className={styles.answerTag}>{MODE_LABEL[mode]}</span></div>
       <button type="button" onClick={toggleAnswers} className={styles.darkButton}>{paused ? <Play size={12} aria-hidden /> : <Pause size={12} aria-hidden />}{paused ? 'Resume answers' : 'Pause answers'}</button>
     </div>
     {paused && <p role="status" className={styles.livePaused}>Answers paused. Audio capture continues until you end the interview.</p>}
+    {(mode === 'behavioral' || behavioral.round.records.length > 0) && <BehavioralContextPanel session={behavioral} onBeforeChange={pauseForContextChange} onNewRound={newBehavioralRound} latestQuestion={current?.question || ''} sourceNotice={behavioralTranscriptNotice} />}
     {(error || proactive.error) && <p role="alert" className={styles.error}>{error || proactive.error}</p>}
     <div className="mt-2"><p className={styles.answerLabel}>Current question</p><h2 className={styles.answerQuestion}>{activeQuestion || 'Listening for the next question…'}</h2></div>
     <section className={styles.answerCard} aria-label="AI answer">
       <div className={styles.answerCardHeader}><span><Sparkles size={16} aria-hidden />AI answer</span><span className={styles.answerProgress} role="status">{routing ? 'Finding context…' : current?.streaming ? 'Answering…' : current?.failed ? 'Needs retry' : current ? 'Ready' : 'Waiting for a question'}</span></div>
-      {routing ? <p className={styles.answerEmpty}>Preparing the latest question…</p> : !current ? <div className={styles.answerEmpty}><AudioLines size={27} aria-hidden /><strong>A little context. A clearer answer.</strong><p>The answer appears here automatically when a complete question is detected.</p></div> : current.failed ? <div className={styles.answerEmpty}><p>The answer did not complete.</p><button type="button" className={styles.darkButton} onClick={() => feed.retry(current.id)}><RotateCcw size={14} aria-hidden />Retry</button></div> : <div className={styles.answerMarkdown}><Markdown>{current.answer || 'Preparing answer…'}</Markdown></div>}
+      {routing ? <p className={styles.answerEmpty}>Preparing the latest question…</p> : !current ? <div className={styles.answerEmpty}><AudioLines size={27} aria-hidden /><strong>A little context. A clearer answer.</strong><p>The answer appears here automatically when a complete question is detected.</p></div> : current.failed ? <div className={styles.answerEmpty}><p>{current.error || 'The answer did not complete.'}</p><button type="button" className={styles.darkButton} onClick={() => feed.retry(current.id)}><RotateCcw size={14} aria-hidden />Retry</button></div> : <div className={styles.answerMarkdown}><Markdown>{current.answer || 'Preparing answer…'}</Markdown></div>}
     </section>
     {feed.count > 0 && <div className={styles.answerPagination}><button type="button" aria-label="Previous answer" disabled={feed.cursor <= 0} onClick={feed.prev} className={styles.darkButton}><ChevronLeft size={15} aria-hidden /></button><span>Answer {feed.cursor + 1} of {feed.count}</span><button type="button" aria-label="Next answer" disabled={feed.cursor >= feed.count - 1} onClick={feed.next} className={styles.darkButton}><ChevronRight size={15} aria-hidden /></button><span>{MODE_LABEL[mode]}</span></div>}
     <details className={styles.preferences}><summary><Settings2 size={13} aria-hidden />Answer preferences</summary><div className={styles.preferencesBody}><ResponsePreferencesControls {...responsePreferences} compact /></div></details>

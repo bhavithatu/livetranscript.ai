@@ -13,6 +13,7 @@
     "eval:coding": "vitest run --config evals/vitest.eval.config.ts runCoding",
     "eval:detection": "vitest run --config evals/vitest.eval.config.ts runDetection",
     "eval:voice": "vitest run --config evals/vitest.eval.config.ts runBehavioralVoice",
+    "eval:behavioral": "vitest run --config evals/behavioral/vitest.config.ts",
     "eval:live": "vitest run --config evals/vitest.eval.config.ts runLiveAnswer",
     "eval:all": "vitest run --config evals/vitest.eval.config.ts",
     "eval:repo": "vitest run --config evals/repo/vitest.config.ts runBenchmark",
@@ -24,6 +25,7 @@
     "eval:aptitude": "vitest run --config evals/aptitude/vitest.config.ts",
     "eval:aptitude:prepare": "APTITUDE_EVAL_PREPARE=1 vitest run --config evals/aptitude/vitest.config.ts prepareFixtures",
     "test:aptitude:browser": "python3 qa/aptitude/verify.py",
+    "test:behavioral:browser": "python3 qa/behavioral/verify.py",
     "test:simulator": "vitest run lib/coach/simulation/runner.test.ts",
     "test:live-acceptance": "node scripts/check-production-readiness.mjs"
   },

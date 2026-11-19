@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LiveAnswerCanvas } from './LiveAnswerCanvas'
+import { parseBehavioralSources } from '@/lib/behavioral/sources'
 
 const mocks = vi.hoisted(() => ({
   route: vi.fn(), answer: vi.fn(), stop: vi.fn(), proactive: vi.fn(),
@@ -67,11 +68,16 @@ describe('live answer context and cancellation', () => {
     expect(mocks.answer).toHaveBeenCalledExactlyOnceWith(
       'Tell me about a technical disagreement.',
       'behavioral',
-      'Candidate background\n\nWhat I said: My prior explanation\n\nSTORY — Queue migration\nI tested the retry boundary before rollout.',
+      expect.any(String),
       null,
       'Use my actual migration story.',
       'The full discussion',
     )
+    expect(parseBehavioralSources(mocks.answer.mock.lastCall?.[2])).toEqual([
+      { label: 'Provided candidate resume and target job description', text: 'Candidate background' },
+      { label: 'Candidate microphone context; transcription may contain errors', text: 'My prior explanation' },
+      { label: 'Source story: Queue migration', text: 'I tested the retry boundary before rollout.' },
+    ])
   })
 
   it('detects questions from its dedicated getter and grounds answers in the latest full discussion', async () => {

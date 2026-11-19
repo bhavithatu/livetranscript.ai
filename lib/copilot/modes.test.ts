@@ -21,7 +21,7 @@ describe('modeProfile', () => {
       expect(p.maxTokens).toBeGreaterThanOrEqual(1000)
     }
   })
-  it('behavioral has the largest token budget (two full STAR stories must fit uncut)', () => {
+  it('behavioral leaves enough output budget for source-grounded stories and consistency checks', () => {
     expect(MODE_PROFILES.behavioral.maxTokens).toBeGreaterThan(MODE_PROFILES.general.maxTokens)
     expect(MODE_PROFILES.behavioral.maxTokens).toBeGreaterThanOrEqual(MODE_PROFILES.coding.maxTokens)
   })
@@ -31,8 +31,7 @@ describe('purpose-specific model tiers', () => {
   it('coding/systemDesign/behavioral use the smart tier (accuracy-first); general uses fast', () => {
     expect(MODE_PROFILES.coding.tier).toBe('smart')
     expect(MODE_PROFILES.systemDesign.tier).toBe('smart')
-    // Behavioral moved to smart: most hallucination/voice-sensitive + must stay
-    // undetectable; long-form so thinking-off streams instantly anyway.
+    // Behavioral answers require faithful personal facts and consistent voice.
     expect(MODE_PROFILES.behavioral.tier).toBe('smart')
     expect(MODE_PROFILES.general.tier).toBe('fast')
   })

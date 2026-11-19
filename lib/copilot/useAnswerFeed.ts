@@ -3,12 +3,19 @@ import { useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { captureLatency } from './latency'
 import type { AnswerPreferences } from './answerPreferences'
 import { CopilotCalibrationContext, type Calibration } from '@/lib/interview/TuningContext'
+import { parseDraftStream } from './draftProtocol'
+import type { BehavioralSnapshot } from '@/lib/behavioral/session'
+import type { BehavioralSessionController } from '@/lib/behavioral/useBehavioralSession'
 
 export type AnswerEntry = {
   id: number; question: string; answer: string; streaming: boolean; retrying: boolean; failed: boolean
   error?: string | null
 }
-type RequestArgs = { mode: string; meContext: string | null; image: string | null; instructions?: string | null; transcript?: string | null; preferences?: AnswerPreferences; calibration: Calibration | null }
+type RequestArgs = {
+  mode: string; meContext: string | null; image: string | null; instructions?: string | null; transcript?: string | null
+  preferences?: AnswerPreferences; calibration: Calibration | null
+  behavioralController?: BehavioralSessionController; behavioralSnapshot?: BehavioralSnapshot
+}
 const STALL_TIMEOUT_MS = 20_000
 const TOKEN_GAP_MS = 15_000
 const MAX_AUTO_RETRIES = 2
@@ -26,7 +33,7 @@ function backoff(ms: number, signal: AbortSignal): Promise<boolean> {
 
 // Each card has one active run. Retry replaces that run; clear and unmount cancel
 // both in-flight streams and scheduled retries so old questions cannot reappear.
-export function useAnswerFeed(preferences?: AnswerPreferences) {
+export function useAnswerFeed(preferences?: AnswerPreferences, behavioralSession?: BehavioralSessionController) {
   const [entries, setEntries] = useState<AnswerEntry[]>([])
   const [cursor, setCursor] = useState(0)
   const idRef = useRef(0)
@@ -36,6 +43,8 @@ export function useAnswerFeed(preferences?: AnswerPreferences) {
   const mounted = useRef(true)
   const preferencesRef = useRef(preferences)
   useEffect(() => { preferencesRef.current = preferences }, [preferences])
+  const behavioralRef = useRef(behavioralSession)
+  useEffect(() => { behavioralRef.current = behavioralSession }, [behavioralSession])
   const calibration = useContext(CopilotCalibrationContext)
   const calibrationRef = useRef(calibration)
   useEffect(() => { calibrationRef.current = calibration }, [calibration])
@@ -66,13 +75,28 @@ export function useAnswerFeed(preferences?: AnswerPreferences) {
     if (previous) { previous.abort(); finishRunning(previous) }
     const job = new AbortController()
     jobs.current.set(id, job)
+    const { behavioralController: session, behavioralSnapshot: snapshot } = args
+    const ownsRequest = () => mounted.current && jobs.current.get(id) === job && !job.signal.aborted
+    const current = () => ownsRequest() && (!snapshot || session!.isCurrent(snapshot))
+    const invalidate = () => {
+      if (!ownsRequest() || !snapshot || session!.isCurrent(snapshot)) return
+      job.abort()
+      jobs.current.delete(id)
+      finishRunning(job)
+      updateEntries(previous => previous.map(entry => entry.id === id
+        ? { ...entry, streaming: false, retrying: false, failed: true, error: 'Your behavioral context changed. Ask again to use the updated facts.' }
+        : entry))
+    }
+    // A manual retry must not silently rebind an old question to edited facts.
+    if (snapshot && !session!.isCurrent(snapshot)) { invalidate(); return }
+    const unsubscribe = snapshot ? session!.subscribeInvalidation(invalidate) : undefined
+    if (unsubscribe) job.signal.addEventListener('abort', unsubscribe, { once: true })
     const settings = args.calibration
     if (settings?.onRunning) {
       const alreadyRunning = [...runningCallbacks.current.values()].includes(settings.onRunning)
       runningCallbacks.current.set(job, settings.onRunning)
       if (!alreadyRunning) settings.onRunning(true)
     }
-    const current = () => mounted.current && jobs.current.get(id) === job && !job.signal.aborted
     const update = (changes: Partial<AnswerEntry>) => {
       if (current()) updateEntries((previous) => previous.map((entry) => entry.id === id ? { ...entry, ...changes } : entry))
     }
@@ -109,7 +133,7 @@ export function useAnswerFeed(preferences?: AnswerPreferences) {
         let firstTokenAt: number | null = null
         update({ answer: '', streaming: true, retrying: attempt > 0, failed: false, error: null })
         try {
-          const history = entriesRef.current.filter((entry) => entry.id < id && !entry.streaming && !entry.failed && !!entry.answer.trim()
+          const history = snapshot ? [] : entriesRef.current.filter((entry) => entry.id < id && !entry.streaming && !entry.failed && !!entry.answer.trim()
             && argsRef.current.get(entry.id)?.mode === args.mode)
             .slice(-HISTORY_TURNS).flatMap((entry) => [
               { role: 'user' as const, content: entry.question }, { role: 'assistant' as const, content: entry.answer },
@@ -118,6 +142,7 @@ export function useAnswerFeed(preferences?: AnswerPreferences) {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ question, transcript: args.transcript ?? '', mode: args.mode, history,
               image: args.image ?? undefined, context: args.meContext ?? undefined, instructions: args.instructions ?? undefined,
+              behavioralSession: snapshot,
               preferences: args.preferences, calibration: settings?.instructions || undefined }),
             signal: controller.signal,
           })
@@ -143,6 +168,7 @@ export function useAnswerFeed(preferences?: AnswerPreferences) {
             if (done) break
           }
           if (!raw.trim()) throw new Error('The assistant returned no answer. Please retry.')
+          if (snapshot && (parseDraftStream(raw).phase === 'draft' || !parseDraftStream(raw).text.trim())) throw new Error('The assistant returned only an unfinished draft. Please retry.')
           captureLatency(args.mode, startedAt, firstTokenAt, raw)
           update({ streaming: false, retrying: false, failed: false, error: null })
           completed = true
@@ -162,6 +188,7 @@ export function useAnswerFeed(preferences?: AnswerPreferences) {
       }
       if (!current()) return
       if (!completed) update({ streaming: false, retrying: false, failed: true, error: failureMessage })
+      if (completed && snapshot) session!.recordSuggestion(snapshot, question, parseDraftStream(finalContent).text)
       settings?.onResult?.({
         id: crypto.randomUUID(), question, mode: args.mode, answer: finalContent, transcript: args.transcript ?? '',
         instructions: args.instructions ?? '', calibration: settings.instructions, revision: settings.revision,
@@ -170,6 +197,8 @@ export function useAnswerFeed(preferences?: AnswerPreferences) {
         error: completed ? undefined : failureMessage, hasImage: !!args.image,
       })
     } finally {
+      unsubscribe?.()
+      if (unsubscribe) job.signal.removeEventListener('abort', unsubscribe)
       if (jobs.current.get(id) === job) jobs.current.delete(id)
       finishRunning(job)
     }
@@ -180,10 +209,16 @@ export function useAnswerFeed(preferences?: AnswerPreferences) {
     instructions?: string | null, transcript?: string | null,
   ) => {
     if (!question.trim() || !mounted.current) return
+    const session = mode === 'behavioral' ? behavioralRef.current : undefined
+    // Observe source evidence before taking the immutable request snapshot. The
+    // caller surfaces preparation errors without starting a partial-context call.
+    if (session) session.observeContext(meContext, transcript ?? null)
+    const snapshot = session?.snapshot(question)
     const id = ++idRef.current
     const args: RequestArgs = { mode, meContext, image, instructions, transcript,
       preferences: preferencesRef.current ? { ...preferencesRef.current } : undefined,
-      calibration: calibrationRef.current ? { ...calibrationRef.current } : null }
+      calibration: calibrationRef.current ? { ...calibrationRef.current } : null,
+      behavioralController: session, behavioralSnapshot: snapshot }
     argsRef.current.set(id, args)
     const previousLength = entriesRef.current.length
     updateEntries((previous) => [...previous, { id, question, answer: '', streaming: true, retrying: false, failed: false, error: null }])
@@ -201,12 +236,29 @@ export function useAnswerFeed(preferences?: AnswerPreferences) {
     updateEntries((previous) => previous.map((entry) => entry.streaming
       ? { ...entry, streaming: false, retrying: false, failed: true, error: 'Answer stopped. Retry to finish.' } : entry))
   }, [cancelAll, updateEntries])
-  const clear = useCallback(() => {
-    cancelAll()
-    updateEntries(() => [])
-    setCursor(0)
-    argsRef.current.clear()
-  }, [cancelAll, updateEntries])
+  const clear = useCallback((mode?: string) => {
+    if (mode === undefined) {
+      cancelAll()
+      updateEntries(() => [])
+      setCursor(0)
+      argsRef.current.clear()
+      return
+    }
+    const previous = entriesRef.current
+    const removed = new Set(previous.filter(entry => argsRef.current.get(entry.id)?.mode === mode).map(entry => entry.id))
+    for (const id of removed) {
+      const controller = jobs.current.get(id)
+      if (controller) { controller.abort(); finishRunning(controller); jobs.current.delete(id) }
+      argsRef.current.delete(id)
+    }
+    const remaining = previous.filter(entry => !removed.has(entry.id))
+    updateEntries(() => remaining)
+    setCursor(current => {
+      const selectedId = previous[Math.min(current, previous.length - 1)]?.id
+      const retainedIndex = remaining.findIndex(entry => entry.id === selectedId)
+      return retainedIndex >= 0 ? retainedIndex : Math.max(0, Math.min(current, remaining.length - 1))
+    })
+  }, [cancelAll, finishRunning, updateEntries])
   const prev = useCallback(() => setCursor((current) => Math.max(0, current - 1)), [])
   const next = useCallback(() => setCursor((current) => Math.max(0, Math.min(entriesRef.current.length - 1, current + 1))), [])
   const questions = useCallback(() => entriesRef.current.map((entry) => ({ q: entry.question, mode: argsRef.current.get(entry.id)?.mode ?? 'general' })), [])

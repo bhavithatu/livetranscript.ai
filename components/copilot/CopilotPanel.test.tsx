@@ -1,6 +1,8 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CopilotPanel } from './CopilotPanel'
+import type { BehavioralSessionController } from '@/lib/behavioral/useBehavioralSession'
+import { createBehavioralTranscriptBoundary } from '@/lib/behavioral/roundTranscript'
 
 const mocks = vi.hoisted(() => ({
   analyze: vi.fn(),
@@ -10,6 +12,10 @@ const mocks = vi.hoisted(() => ({
   ask: vi.fn(),
   stop: vi.fn(),
   useCopilot: vi.fn(),
+  useFeed: vi.fn(),
+  clearFeed: vi.fn(),
+  clearChat: vi.fn(),
+  clearVoice: vi.fn(),
   screenSharing: false,
   autoCapture: vi.fn(),
   latestQuestion: vi.fn(),
@@ -25,8 +31,8 @@ vi.mock('@/lib/copilot/useModeContext', () => ({ useModeContext: () => ({
 }) }))
 vi.mock('@/lib/copilot/useCandidateProfile', () => ({ useCandidateProfile: () => ({ hasProfile: false, resume: '', jd: '', savedNote: '', setResume: vi.fn(), setJd: vi.fn(), clear: vi.fn(), contextBlock: () => null }) }))
 vi.mock('@/lib/copilot/useOrchestrationRouter', () => ({ useOrchestrationRouter: () => ({ route: mocks.route }) }))
-vi.mock('@/lib/copilot/useAnswerFeed', () => ({ useAnswerFeed: () => ({ count: 0, entries: [], answer: mocks.feedAnswer, stop: vi.fn(), questions: () => [] }) }))
-vi.mock('@/lib/copilot/useMeContext', () => ({ useMeContext: () => ({ listening: false, startListening: vi.fn(), stopListening: vi.fn(), getMeContext: () => '' }) }))
+vi.mock('@/lib/copilot/useAnswerFeed', () => ({ useAnswerFeed: (...args: unknown[]) => { mocks.useFeed(...args); return { count: 0, entries: [], answer: mocks.feedAnswer, stop: vi.fn(), clear: mocks.clearFeed, questions: () => [] } } }))
+vi.mock('@/lib/copilot/useMeContext', () => ({ useMeContext: () => ({ listening: false, startListening: vi.fn(), stopListening: vi.fn(), getMeContext: () => '', clearContext: mocks.clearVoice }) }))
 vi.mock('@/lib/copilot/useProactive', () => ({ useProactive: vi.fn(), latestQuestion: mocks.latestQuestion }))
 vi.mock('@/lib/vision/useAutoCapture', () => ({ useAutoCapture: mocks.autoCapture }))
 vi.mock('@/lib/copilot/codeExecutor', async (importOriginal) => ({ ...await importOriginal<Record<string, unknown>>(), preloadRuntime: vi.fn() }))
@@ -82,6 +88,7 @@ function ledgerButton(text: string): HTMLButtonElement {
 beforeEach(() => {
   vi.useFakeTimers()
   localStorage.clear()
+  sessionStorage.clear()
   mocks.analyze.mockReset()
   mocks.contextRetrieve.mockReset().mockResolvedValue('uploaded notes')
   mocks.showQuestion.mockReset()
@@ -89,7 +96,11 @@ beforeEach(() => {
   mocks.screenSharing = false
   mocks.ask.mockReset().mockResolvedValue('An answer')
   mocks.stop.mockReset()
-  mocks.useCopilot.mockReset().mockImplementation(() => ({ turns: [], streaming: false, error: null, ask: mocks.ask, stop: mocks.stop, clear: vi.fn() }))
+  mocks.useCopilot.mockReset().mockImplementation(() => ({ turns: [], streaming: false, error: null, ask: mocks.ask, stop: mocks.stop, clear: mocks.clearChat }))
+  mocks.useFeed.mockReset()
+  mocks.clearFeed.mockReset()
+  mocks.clearChat.mockReset()
+  mocks.clearVoice.mockReset()
   mocks.autoCapture.mockReset()
   mocks.latestQuestion.mockReset().mockReturnValue(null)
   mocks.route.mockReset().mockResolvedValue({ classification: null, webContext: null })
@@ -99,6 +110,64 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   vi.useRealTimers()
+})
+
+describe('behavioral context product flow', () => {
+  it('shares confirmed answers and company context across both answer surfaces and reloads the account round', async () => {
+    const first = render(<CopilotPanel getTranscript={() => ''} initialMode="behavioral" variant="workspace" archiveOwnerId="behavioral-owner" />)
+    await flush()
+    fireEvent.click(screen.getByText('Company, role and your work style'))
+    fireEvent.change(screen.getByLabelText('Company'), { target: { value: 'Example Company' } })
+    fireEvent.change(screen.getByLabelText('Your actual work style and facts'), { target: { value: 'I prepare before experimenting and ask teammates for feedback.' } })
+    fireEvent.change(screen.getByLabelText('Question type'), { target: { value: 'assessment' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save behavioral context' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Record my answer' }))
+    fireEvent.change(screen.getByLabelText('Question', { exact: true }), { target: { value: 'What improvement did you measure?' } })
+    fireEvent.change(screen.getByLabelText('Your actual answer or selected option text'), { target: { value: 'I measured a 14% improvement.' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save actual answer' }))
+
+    const controller = mocks.useCopilot.mock.lastCall?.[2] as BehavioralSessionController
+    expect(mocks.useFeed.mock.lastCall?.[1]).toBe(controller)
+    expect(controller.snapshot().profile.company).toBe('Example Company')
+    expect(controller.snapshot().profile.questionStyle).toBe('assessment')
+    expect(controller.snapshot().records).toEqual([expect.objectContaining({ kind: 'confirmed_answer', text: 'I measured a 14% improvement.' })])
+    expect(screen.getByText('1 recorded answer · 0 AI suggestions')).toBeTruthy()
+
+    first.unmount()
+    render(<CopilotPanel getTranscript={() => ''} initialMode="behavioral" variant="workspace" archiveOwnerId="behavioral-owner" />)
+    await flush()
+    const restored = mocks.useCopilot.mock.lastCall?.[2] as BehavioralSessionController
+    expect(restored.snapshot().roundId).toBe(controller.round.id)
+    expect(restored.snapshot().records[0].text).toBe('I measured a 14% improvement.')
+    expect(screen.getByText(/All retained round context is included/)).toBeTruthy()
+  })
+
+  it('starts a fresh round with both histories cleared and excludes earlier audio while retaining the profile', async () => {
+    let transcript = 'Earlier round transcript.'
+    const boundary = createBehavioralTranscriptBoundary()
+    const view = render(<CopilotPanel getTranscript={() => transcript} initialMode="behavioral" variant="workspace" behavioralTranscriptBoundary={boundary} archiveOwnerId="round-owner" />)
+    await flush()
+    const controller = mocks.useCopilot.mock.lastCall?.[2] as BehavioralSessionController
+    act(() => {
+      controller.updateProfile({ company: 'Example Company' })
+      controller.addRecord({ kind: 'confirmed_answer', question: 'How do you work?', text: 'I ask for feedback early.' })
+    })
+    fireEvent.click(screen.getByText('Round history and controls (1)'))
+    fireEvent.click(screen.getByRole('button', { name: 'New behavioral round' }))
+    const next = mocks.useCopilot.mock.lastCall?.[2] as BehavioralSessionController
+    expect(next.snapshot().roundId).not.toBe(controller.round.id)
+    expect(next.snapshot().records).toEqual([])
+    expect(next.snapshot().profile.company).toBe('Example Company')
+    expect(mocks.clearFeed).toHaveBeenCalledOnce()
+    expect(mocks.clearChat).toHaveBeenCalledOnce()
+    expect(mocks.clearVoice).toHaveBeenCalledOnce()
+    transcript += ' New round question.'
+    expect(mocks.useCopilot.mock.lastCall?.[0]().trim()).toBe('New round question.')
+    view.unmount()
+    render(<CopilotPanel getTranscript={() => transcript} initialMode="behavioral" variant="workspace" behavioralTranscriptBoundary={boundary} archiveOwnerId="round-owner" />)
+    await flush()
+    expect(mocks.useCopilot.mock.lastCall?.[0]().trim()).toBe('New round question.')
+  })
 })
 
 describe('repository interview product journey', () => {

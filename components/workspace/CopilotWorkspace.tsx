@@ -10,6 +10,7 @@ import { WorkspaceShell } from '@/components/nav/WorkspaceShell'
 import { CopilotPanel } from '@/components/copilot/CopilotPanel'
 import { MODE_ORDER, type CopilotMode } from '@/lib/copilot/modes'
 import { useCopilotCapture } from '@/lib/copilot/useCopilotCapture'
+import { createBehavioralTranscriptBoundary } from '@/lib/behavioral/roundTranscript'
 
 const WorkspacePanel = memo(CopilotPanel)
 const AptitudeWorkspace = dynamic(() => import('@/components/aptitude/AptitudeWorkspace').then(module => module.AptitudeWorkspace), {
@@ -18,6 +19,9 @@ const AptitudeWorkspace = dynamic(() => import('@/components/aptitude/AptitudeWo
 
 export function CopilotWorkspace({ initialMode = 'general', archiveOwnerId }: { initialMode?: CopilotMode; archiveOwnerId?: string | null }) {
   const capture = useCopilotCapture()
+  // Keep the round's audio boundary when Aptitude temporarily unmounts the chat
+  // panel; its shared audio buffer has the same workspace lifetime.
+  const [behavioralTranscriptBoundary] = useState(createBehavioralTranscriptBoundary)
   const stopAudio = capture.stop
   const [activeMode, setActiveMode] = useState<CopilotMode>(initialMode)
   const lastMode = useRef(initialMode)
@@ -125,7 +129,7 @@ export function CopilotWorkspace({ initialMode = 'general', archiveOwnerId }: { 
             <WorkspaceModeNavigation mode="aptitude" onChange={modeChanged} horizontal />
           </details>
           <AptitudeWorkspace key={archiveOwnerId ?? 'memory-only'} archiveOwnerId={archiveOwnerId} />
-        </> : <WorkspacePanel initialMode={activeMode} onModeChange={modeChanged} variant="workspace" getTranscript={capture.getTranscript} />}
+        </> : <WorkspacePanel key={archiveOwnerId ?? 'memory-only'} archiveOwnerId={archiveOwnerId} behavioralTranscriptBoundary={behavioralTranscriptBoundary} initialMode={activeMode} onModeChange={modeChanged} variant="workspace" getTranscript={capture.getTranscript} />}
       </div>
     </main>
     </WorkspaceShell>

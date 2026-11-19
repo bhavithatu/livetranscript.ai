@@ -5,10 +5,50 @@ import { captureLatency } from './latency'
 import type { AnswerPreferences } from './answerPreferences'
 import { createElement, type ReactNode } from 'react'
 import { CopilotCalibrationContext, type Calibration } from '@/lib/interview/TuningContext'
+import { DRAFT_SENTINEL, REFINED_SENTINEL } from './draftProtocol'
+import { buildBehavioralSnapshot, createBehavioralRound, type BehavioralSnapshot } from '@/lib/behavioral/session'
+import type { BehavioralSessionController } from '@/lib/behavioral/useBehavioralSession'
 vi.mock('./latency', () => ({ captureLatency: vi.fn() }))
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.clearAllMocks() })
 
+function behavioralController(company = 'Elm') {
+  const round = createBehavioralRound({ company })
+  round.records = [{ id: 'actual', kind: 'confirmed_answer', question: 'What improved?', text: 'I measured 14% against the baseline.', createdAt: 1 }]
+  const snapshot = buildBehavioralSnapshot(round)
+  let current = true
+  const listeners = new Set<() => void>()
+  const recordSuggestion = vi.fn(), observeContext = vi.fn(), takeSnapshot = vi.fn(() => snapshot)
+  const controller = {
+    round, snapshot: takeSnapshot, recordSuggestion, observeContext,
+    isCurrent: (request: BehavioralSnapshot) => current && request === snapshot,
+    subscribeInvalidation: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener) } },
+  } as unknown as BehavioralSessionController
+  return { controller, snapshot, recordSuggestion, observeContext, takeSnapshot,
+    invalidate: () => { current = false; listeners.forEach(listener => listener()) } }
+}
+
 describe('answer feed cancellation and retries', () => {
+  it('clears only the selected mode and cancels its retry without removing coding history', async () => {
+    vi.useFakeTimers()
+    const fetcher = vi.fn().mockResolvedValueOnce(new Response('Saved coding answer'))
+      .mockResolvedValueOnce(new Response('Unavailable', { status: 503 }))
+    vi.stubGlobal('fetch', fetcher)
+    const hook = renderHook(() => useAnswerFeed())
+    await act(async () => { await hook.result.current.answer('Code?', 'coding', null, null) })
+    let pending!: Promise<void>
+    await act(async () => { pending = hook.result.current.answer('Story?', 'behavioral', null, null); await Promise.resolve() })
+    const removedId = hook.result.current.current!.id
+    expect(hook.result.current.current?.retrying).toBe(true)
+    await act(async () => { hook.result.current.clear('behavioral'); await pending; await vi.advanceTimersByTimeAsync(10_000) })
+    expect(fetcher).toHaveBeenCalledTimes(2)
+    expect(hook.result.current.entries).toHaveLength(1)
+    expect(hook.result.current.current).toMatchObject({ question: 'Code?', answer: 'Saved coding answer', failed: false })
+    act(() => hook.result.current.retry(removedId))
+    expect(fetcher).toHaveBeenCalledTimes(2)
+    act(() => hook.result.current.clear())
+    expect(hook.result.current.entries).toEqual([])
+  })
+
   it('clears a retry delay without issuing a later paid request', async () => {
     vi.useFakeTimers()
     const fetcher = vi.fn().mockResolvedValue(new Response('Unavailable', { status: 503 }))
@@ -174,5 +214,75 @@ describe('live and Mock feed calibration', () => {
     await act(async () => { resolves[1](new Response('Second answer')); await second })
     expect(running.mock.calls).toEqual([[true], [false]])
     expect(report).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('behavioral feed snapshot ownership', () => {
+  it('retains the original snapshot and controller through retries, then saves only the refined answer', async () => {
+    vi.useFakeTimers()
+    const original = behavioralController(), later = behavioralController('Oak')
+    const fetcher = vi.fn().mockResolvedValueOnce(new Response('Unavailable', { status: 503 }))
+      .mockResolvedValueOnce(new Response(`${DRAFT_SENTINEL}A 40% draft${REFINED_SENTINEL}The measured reduction was 14%.`))
+    vi.stubGlobal('fetch', fetcher)
+    const hook = renderHook(({ session }) => useAnswerFeed(undefined, session), { initialProps: { session: original.controller } })
+    let pending!: Promise<void>
+    await act(async () => {
+      pending = hook.result.current.answer('How did you measure it?', 'behavioral', 'Original story evidence', null, 'Plain English', 'Candidate: 14%.')
+      await Promise.resolve()
+    })
+    expect(hook.result.current.current?.retrying).toBe(true)
+    hook.rerender({ session: later.controller })
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); await pending })
+
+    expect(fetcher).toHaveBeenCalledTimes(2)
+    expect(original.takeSnapshot).toHaveBeenCalledExactlyOnceWith('How did you measure it?')
+    expect(original.observeContext).toHaveBeenCalledExactlyOnceWith('Original story evidence', 'Candidate: 14%.')
+    for (const [, init] of fetcher.mock.calls) {
+      const body = JSON.parse(String(init.body))
+      expect(body.behavioralSession).toEqual(original.snapshot)
+      expect(body.history).toEqual([])
+    }
+    expect(original.recordSuggestion).toHaveBeenCalledExactlyOnceWith(original.snapshot, 'How did you measure it?', 'The measured reduction was 14%.')
+    expect(later.takeSnapshot).not.toHaveBeenCalled()
+    expect(later.recordSuggestion).not.toHaveBeenCalled()
+  })
+
+  it('cancels changed context and refuses to rebind a manual retry to the new profile', async () => {
+    const session = behavioralController()
+    let resolve!: (response: Response) => void
+    const fetcher = vi.fn<(url: string, init: RequestInit) => Promise<Response>>(() => new Promise(done => { resolve = done }))
+    vi.stubGlobal('fetch', fetcher)
+    const hook = renderHook(() => useAnswerFeed(undefined, session.controller))
+    let pending!: Promise<void>
+    act(() => { pending = hook.result.current.answer('What would you do?', 'behavioral', null, null) })
+    act(() => session.invalidate())
+    expect(fetcher.mock.calls[0][1].signal?.aborted).toBe(true)
+    expect(hook.result.current.current).toMatchObject({ failed: true, streaming: false, error: expect.stringMatching(/context changed/) })
+    await act(async () => { resolve(new Response('Outdated recommendation')); await pending })
+    act(() => hook.result.current.retry(hook.result.current.current!.id))
+    expect(fetcher).toHaveBeenCalledTimes(1)
+    expect(session.recordSuggestion).not.toHaveBeenCalled()
+  })
+
+  it('does not record partial or draft-only attempts before a complete final answer', async () => {
+    vi.useFakeTimers()
+    const session = behavioralController()
+    let fail!: () => void
+    const partial = new ReadableStream<Uint8Array>({ start(controller) {
+      controller.enqueue(new TextEncoder().encode('Unsupported partial 40%'))
+      fail = () => controller.error(new Error('Interrupted'))
+    } })
+    const fetcher = vi.fn().mockResolvedValueOnce(new Response(partial))
+      .mockResolvedValueOnce(new Response(`${DRAFT_SENTINEL}Unfinished draft`))
+      .mockResolvedValueOnce(new Response('My actual measurement was 14%.'))
+    vi.stubGlobal('fetch', fetcher)
+    const hook = renderHook(() => useAnswerFeed(undefined, session.controller))
+    let pending!: Promise<void>
+    await act(async () => { pending = hook.result.current.answer('What improved?', 'behavioral', null, null); await Promise.resolve() })
+    expect(session.recordSuggestion).not.toHaveBeenCalled()
+    await act(async () => { fail(); await Promise.resolve(); await vi.advanceTimersByTimeAsync(5000); await pending })
+    expect(fetcher).toHaveBeenCalledTimes(3)
+    expect(session.recordSuggestion).toHaveBeenCalledExactlyOnceWith(session.snapshot, 'What improved?', 'My actual measurement was 14%.')
+    expect(session.takeSnapshot).toHaveBeenCalledOnce()
   })
 })

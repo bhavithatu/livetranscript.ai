@@ -288,3 +288,11 @@ export function streamAnswer(p: AnswerParams): ReadableStream<Uint8Array> {
   const params = { ...p, signal }
   return toReadable(shouldDraft(params) ? withSpeculativeDraft(params) : withFallbackChain(params), () => cancellation.abort())
 }
+
+/** Bounded evaluations use the same vendor request path, with exactly one SDK
+ * request and no speculative draft or fallback that could conceal a failure. */
+export function streamAnswerDirect(p: AnswerParams): ReadableStream<Uint8Array> {
+  const cancellation = new AbortController()
+  const signal = p.signal ? AbortSignal.any([p.signal, cancellation.signal]) : cancellation.signal
+  return toReadable(tokensFor({ ...p, signal }), () => cancellation.abort())
+}

@@ -13,6 +13,7 @@ on:
       - 'components/**'
       - 'evals/**'
       - 'qa/aptitude/**'
+      - 'qa/behavioral/**'
       - 'scripts/*verify_deployment.py'
       - 'scripts/*brand-desktop.mjs'
       - 'package.json'
@@ -27,6 +28,7 @@ on:
       - 'components/**'
       - 'evals/**'
       - 'qa/aptitude/**'
+      - 'qa/behavioral/**'
       - 'scripts/*verify_deployment.py'
       - 'scripts/*brand-desktop.mjs'
       - 'package.json'
@@ -68,8 +70,10 @@ jobs:
       #    the eval itself fails if F1 drops below its floor, failing the job.
       - name: Detection eval (F1 gate)
         run: pnpm run eval:detection
+      - name: Behavioral continuity contracts
+        run: pnpm run eval:behavioral
 
-      # 3. Key-dependent evals (coding pass@1, behavioral voice). These SELF-SKIP
+      # 3. Key-dependent evals (coding pass@1, live answers). These SELF-SKIP
       #    when no provider key is present, so they never break CI on a fork/PR
       #    without secrets — but WHEN secrets exist (push to main/master) they run and a
       #    quality regression fails the job. Non-blocking on absence, blocking on
@@ -81,7 +85,6 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           pnpm run eval:coding
-          pnpm run eval:voice
           pnpm run eval:live
 
   aptitude-browser:
@@ -123,9 +126,12 @@ jobs:
           trap 'kill "$APTITUDE_ARCHIVE_SERVER_PID" || true' EXIT
           for i in $(seq 1 40); do curl -fsS http://127.0.0.1:3001/tools >/dev/null && break; sleep 1; done
           APTITUDE_QA_URL=http://127.0.0.1:3001 APTITUDE_QA_PREVIEW_OWNER=1 pnpm run test:aptitude:browser
+          BEHAVIORAL_QA_URL=http://127.0.0.1:3001 pnpm run test:behavioral:browser
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: aptitude-browser-${{ github.sha }}
-          path: qa-results/aptitude/
+          path: |
+            qa-results/aptitude/
+            qa-results/behavioral/
           retention-days: 14

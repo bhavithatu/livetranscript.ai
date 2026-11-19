@@ -50,12 +50,12 @@ const WORKSPACE_MODES: Record<CopilotMode, { icon: LucideIcon; description: stri
   },
   behavioral: {
     icon: MessagesSquare,
-    description: 'Your experience, clearly structured',
-    title: 'Turn your experience into a clear answer.',
+    description: 'Company context, your work style and consistent answers',
+    title: 'Keep your answers grounded and consistent.',
     prompts: [
       { label: 'Structure a story', detail: 'Use STAR with your actual experience.', prompt: 'Help me structure a real experience using STAR. Ask me for the situation, my actions and the outcome.' },
-      { label: 'Explain a disagreement', detail: 'Show your judgment and collaboration.', prompt: 'Help me explain a disagreement constructively using these facts: ' },
-      { label: 'Reflect on a mistake', detail: 'Be specific about what you learned.', prompt: 'Help me discuss an honest mistake and what I learned from it: ' },
+      { label: 'Review a personality item', detail: 'Use your actual preferences and prior answers.', prompt: 'Help me interpret this personality question against my recorded work style and earlier answers. Read any negative wording carefully and use the current option text: ' },
+      { label: 'Check consistency', detail: 'Find conflicts and preserve corrections.', prompt: 'Review the retained behavioral round for contradictions. Distinguish my recorded answers from unconfirmed AI suggestions and identify anything I need to clarify.' },
     ],
   },
 }
@@ -124,7 +124,7 @@ export function WorkspaceEmptyState({ mode, onChoose, onAddContext }: { mode: Co
     <div className="mx-auto w-full max-w-3xl py-5 sm:py-7">
       <div className="mb-4 inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[color:var(--signal)]/10 text-[color:var(--signal)]"><Icon size={21} aria-hidden /></div>
       <h2 className="max-w-xl text-2xl font-semibold leading-tight tracking-tight text-ink">{title}</h2>
-      <p className="mt-2 max-w-xl text-sm leading-relaxed text-[color:var(--muted)]">Ask a question, paste code, or start with a prompt below. Add context for an answer grounded in your work.</p>
+      <p className="mt-2 max-w-xl text-sm leading-relaxed text-[color:var(--muted)]">{mode === 'behavioral' ? 'Add company expectations and your actual work style above, then paste a question with all its options. Record what you actually answered to carry it into later questions.' : 'Ask a question, paste code, or start with a prompt below. Add context for an answer grounded in your work.'}</p>
       <div className="mt-5 grid gap-2 sm:grid-cols-3">
         {prompts.map(({ label, detail, prompt }) => (
           <button key={label} type="button" onClick={() => onChoose(prompt)}
