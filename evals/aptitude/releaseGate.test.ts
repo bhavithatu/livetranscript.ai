@@ -127,6 +127,19 @@ describe('production release criteria without provider calls', () => {
       && candidate.score.evidenceReview?.reviewRequired === false)).toBe(true)
   })
 
+  it('accepts the observed outward-point wording while retaining every release criterion', () => {
+    const second = candidate(1)
+    second.observation!.answer!.evidence = [
+      'The left star has four outward points, with 28 printed below it.',
+      'The middle star has five outward points, with 35 printed below it.',
+      'The right star has seven outward points, with a question mark printed below it.',
+    ]
+    const check = assessAptitudeReleaseFixture(starFixture, result([candidate(0), second]), ids.slice(0, 2), imageHash)
+    expect(check).toMatchObject({ passed: true, failures: [] })
+    expect(check.candidates.every(candidate => candidate.score?.answerCorrect
+      && candidate.score.evidenceReview?.reviewRequired === false)).toBe(true)
+  })
+
   it('reports conservative evidence reconciliation separately from correct candidate accuracy', () => {
     const second = candidate(1)
     second.observation!.question!.stem = 'What is the value of the star with seven points?'
@@ -154,7 +167,7 @@ describe('production release criteria without provider calls', () => {
     expect(check.failures).toContainEqual({ code: 'EVIDENCE_REVIEW_REQUIRED', modelId: ids[1] })
   })
 
-  it.each(['6 outer points', 'six outer tips'])('blocks a contradictory %s reading despite a correct label and calculation', count => {
+  it.each(['6 outer points', 'six outer tips', 'six outward points', '6 outward-facing tips'])('blocks a contradictory %s reading despite a correct label and calculation', count => {
     const contradicted = candidate(1)
     contradicted.observation!.answer!.evidence.push(`The right star has ${count}.`)
     const check = assessAptitudeReleaseFixture(starFixture, result([candidate(0), contradicted]), ids.slice(0, 2), imageHash)

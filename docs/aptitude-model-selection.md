@@ -250,6 +250,15 @@ positive, separate from model correctness. A narrow matcher correction and
 positive/negative regression tests preserve the visual evidence requirement;
 the gate is not disabled and the original failed deployment remains recorded.
 
+The next selected-model deployment, `dpl_ETaHJJ8tDRt5zkFHJ5KmzDERp6j5`, also
+returned six correct objective answers and two correct boundary outcomes, with
+no provider failures. Astra's star evidence passed; Sol's equally correct
+`four/five/seven outward points` descriptions exposed another unsupported
+synonym. The matcher now accepts bounded outer/outward/outward-facing wording
+while still rejecting wrong counts, counts of stars, and inward points. Exact
+response regressions preserve both failed runs as evidence of checker defects;
+neither failure is counted as a wrong model answer or removed from the record.
+
 The corrected selected-model deployment must separately pass that gate and a
 live app check before deployment verification is claimed. The one-time selection flag
 was disabled after the pilot deployment captured its configuration, so future

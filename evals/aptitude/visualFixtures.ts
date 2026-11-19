@@ -1,17 +1,18 @@
 import type { AptitudeFixture } from './fixtures'
 
+const outwardPointModifier = '(?:(?:outer|outward(?:[ -]+facing)?)[ -]+)?'
 const starPoints = {
   category: 'abstract', status: 'solved', selectedLabels: ['C'], criticalText: ['28', '35'],
   optionTextByLabel: { A: '42', B: '45', C: '49', D: '56' }, calculationValue: 49,
   evidenceChecks: [{
     id: 'counts-points-not-stars', description: 'Counts four, five and seven points on three separate stars.',
-    // "Four outer tips" and "4-pointed" describe the same count. Keep complete
+    // Outer/outward-facing tips and "4-pointed" describe the same count. Keep complete
     // number/noun tokens so larger counts or unrelated words cannot satisfy it.
-    allPatterns: ['4|four', '5|five', '7|seven'].map(count => `\\b(?:${count})[ -]*(?:outer[ -]+)?(?:points?|pointed|tips?)\\b`),
+    allPatterns: ['4|four', '5|five', '7|seven'].map(count => `\\b(?:${count})[ -]*${outwardPointModifier}(?:points?|pointed|tips?)\\b`),
     forbiddenPatterns: [
       '\\b(?:four|4|five|5|seven|7)[ -]+stars\\b',
-      '\\b(?:star|shape)\\s+(?:has|shows|with)\\s+(?:6|six)[ -]*(?:outer[ -]+)?(?:points?|tips?)\\b',
-      '\\b(?:star|shape)\\s+is\\s+a\\s+(?:6|six)[ -]*(?:outer[ -]+)?(?:point|pointed|tip|tipped)[ -]+star\\b',
+      `\\b(?:star|shape)\\s+(?:has|shows|with)\\s+(?:6|six)[ -]*${outwardPointModifier}(?:points?|tips?)\\b`,
+      `\\b(?:star|shape)\\s+is\\s+a\\s+(?:6|six)[ -]*${outwardPointModifier}(?:point|pointed|tip|tipped)[ -]+star\\b`,
     ],
   }],
 } satisfies AptitudeFixture['expected']

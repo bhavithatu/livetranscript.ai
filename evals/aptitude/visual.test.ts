@@ -113,6 +113,13 @@ describe('visual evidence review and answer scoring', () => {
       'The middle star has five outer tips and 35 printed below it.',
       'The right star has seven outer tips and a question mark below it.',
     ]],
+    ['written outward points', [
+      'The left star has four outward points, with 28 printed below it.',
+      'The middle star has five outward points, with 35 printed below it.',
+      'The right star has seven outward points, with a question mark printed below it.',
+    ]],
+    ['outward-facing points', ['The stars have 4 outward-facing points, 5 outward-facing points and 7 outward-facing points.']],
+    ['outward-facing tips', ['The stars have four outward-facing tips, five outward-facing tips and seven outward-facing tips.']],
   ])('accepts the complete observed star inventory expressed as %s', (_description, evidence) => {
     const value = starResult()
     value.answer!.evidence = evidence
@@ -130,6 +137,11 @@ describe('visual evidence review and answer scoring', () => {
     'The stars have 14 outer points, 15 outer points and 17 outer points.',
     'The description is 4-pointless, 5-pointless and 7-pointless.',
     'The stars have 4 outer points, 5 outer points and 6 outer points.',
+    'The stars have four outward points, five outward points and six outward points.',
+    'The stars have 4 inward points, 5 inward points and 7 inward points.',
+    'The stars have four inward-facing tips, five inward-facing tips and seven inward-facing tips.',
+    'The diagrams have four outward-facing panels, five outward-facing panels and seven outward-facing panels.',
+    'The diagrams have four outward pointers, five outward pointers and seven outward pointers.',
   ])('requires all three exact point counts in the evidence: %s', evidence => {
     const value = starResult()
     value.answer!.evidence = [evidence]
@@ -144,6 +156,9 @@ describe('visual evidence review and answer scoring', () => {
     'The right star has 6 outer points.',
     'The right star has six outer tips.',
     'The right shape is a six-pointed star.',
+    'The right star has six outward points.',
+    'The right star shows 6 outward-facing tips.',
+    'The right shape is a six outward-facing pointed star.',
     'There are four stars, then five stars, then seven stars.',
   ])('rejects contradictory counts even alongside the correct point inventory: %s', contradiction => {
     const value = starResult()
