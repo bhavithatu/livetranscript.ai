@@ -1,0 +1,3210 @@
+{
+  "version": 1,
+  "scope": "original-claude-openai-regression",
+  "commit": "f2f47c19d2551886b84355470b83260f5e5593ca",
+  "deploymentId": "dpl_6sMr14knPctoAPnJa4AxvTqukcaA",
+  "liveModel": true,
+  "userSafariSessionReviewed": false,
+  "selection": {
+    "environment": "production",
+    "commit": "f2f47c19d2551886b84355470b83260f5e5593ca",
+    "complete": true,
+    "operationallyPassed": true,
+    "phase": "complete",
+    "configuredModels": [
+      "anthropic:claude-sonnet-5-5",
+      "openai:gpt-6.2-sol"
+    ],
+    "fixtureHash": "243ac6d0d3f091493fdbf9045b597657660b7f497ede989ab42d6e99f40c9c7f",
+    "promptHash": "7fb1ab31bb28b3b324c29a1b3cb7edaf2f4e45384a002816c704e5e24bef265d",
+    "plannedCalls": 24,
+    "callsStarted": 24,
+    "failure": null,
+    "aggregates": [
+      {
+        "modelId": "anthropic:claude-sonnet-5-5",
+        "attempted": 12,
+        "completed": 12,
+        "errors": 0,
+        "aborted": 0,
+        "invalidResults": 0,
+        "endToEndCorrect": 10,
+        "endToEndAccuracy": 0.8333333333333334,
+        "objectiveAttempted": 10,
+        "objectiveScored": 10,
+        "objectiveAnswersCorrect": 8,
+        "objectiveAccuracy": 0.8,
+        "expectedAbstentionsAttempted": 2,
+        "expectedAbstentionsScored": 2,
+        "expectedAbstentionErrors": 0,
+        "correctAbstentions": 2,
+        "correctAbstentionRate": 1,
+        "falseCertaintyCount": 0,
+        "falseCertaintyAmongAttempts": 0,
+        "falseCertaintyAmongScored": 0,
+        "comparisonDecisions": {
+          "agreement": 0,
+          "majority": 0,
+          "disagreement": 0,
+          "insufficient": 0
+        },
+        "consensusWrongCount": 0,
+        "selectedAnswersCorrect": 0,
+        "evidenceReviewed": 3,
+        "evidenceReviewFlagged": 0,
+        "optionMappingFailures": 0,
+        "p50Ms": 4487,
+        "p95Ms": 13650,
+        "objectiveWrongSolvedCount": 0,
+        "objectiveUnnecessaryAbstentions": 2,
+        "evidenceSupportedObjectiveCorrect": 8,
+        "gridInventoriesCorrect": 1,
+        "gridInventoriesAttempted": 1,
+        "inputTokens": 82722,
+        "outputTokens": 8948
+      },
+      {
+        "modelId": "openai:gpt-6.2-sol",
+        "attempted": 12,
+        "completed": 12,
+        "errors": 0,
+        "aborted": 0,
+        "invalidResults": 0,
+        "endToEndCorrect": 12,
+        "endToEndAccuracy": 1,
+        "objectiveAttempted": 10,
+        "objectiveScored": 10,
+        "objectiveAnswersCorrect": 10,
+        "objectiveAccuracy": 1,
+        "expectedAbstentionsAttempted": 2,
+        "expectedAbstentionsScored": 2,
+        "expectedAbstentionErrors": 0,
+        "correctAbstentions": 2,
+        "correctAbstentionRate": 1,
+        "falseCertaintyCount": 0,
+        "falseCertaintyAmongAttempts": 0,
+        "falseCertaintyAmongScored": 0,
+        "comparisonDecisions": {
+          "agreement": 0,
+          "majority": 0,
+          "disagreement": 0,
+          "insufficient": 0
+        },
+        "consensusWrongCount": 0,
+        "selectedAnswersCorrect": 0,
+        "evidenceReviewed": 3,
+        "evidenceReviewFlagged": 0,
+        "optionMappingFailures": 0,
+        "p50Ms": 6850,
+        "p95Ms": 15486,
+        "objectiveWrongSolvedCount": 0,
+        "objectiveUnnecessaryAbstentions": 0,
+        "evidenceSupportedObjectiveCorrect": 10,
+        "gridInventoriesCorrect": 1,
+        "gridInventoriesAttempted": 1,
+        "inputTokens": 43543,
+        "outputTokens": 7135
+      }
+    ],
+    "automaticModelPromotion": false,
+    "comparisonSelectionEvaluated": false,
+    "report": "/aptitude-model-selection.json"
+  },
+  "attempts": [
+    {
+      "fixtureId": "selection-reverse-discount",
+      "modelId": "anthropic:claude-sonnet-5-5",
+      "requestedModel": "claude-sonnet-5-5",
+      "returnedModel": "claude-sonnet-5-5",
+      "provider": "anthropic",
+      "outcome": "complete",
+      "durationMs": 6124,
+      "providerDurationMs": 6117,
+      "inputTokens": 6913,
+      "outputTokens": 498,
+      "validated": true,
+      "diagnostic": {
+        "code": "VALID",
+        "validationMessage": null,
+        "structuralCounts": {
+          "evidenceItems": 2,
+          "workedSteps": 3,
+          "options": 4
+        }
+      },
+      "error": null,
+      "sourceImageMatches": true,
+      "answer": {
+        "status": "solved",
+        "labels": [
+          "C"
+        ],
+        "value": "120",
+        "summary": "The original price was 120 dollars, since 96 is 80% of the original.",
+        "confidence": 99
+      },
+      "providerObservation": {
+        "category": "numerical",
+        "status": "solved",
+        "question": {
+          "stem": "A jacket costs 96 dollars after a 20% discount. What was its price before the discount? Choose one.",
+          "instructions": [
+            "Choose one."
+          ],
+          "passage": null,
+          "options": [
+            {
+              "id": "option-a",
+              "label": "A",
+              "text": "115.20 dollars"
+            },
+            {
+              "id": "option-b",
+              "label": "B",
+              "text": "116 dollars"
+            },
+            {
+              "id": "option-c",
+              "label": "C",
+              "text": "120 dollars"
+            },
+            {
+              "id": "option-d",
+              "label": "D",
+              "text": "125 dollars"
+            }
+          ],
+          "responseType": "single_choice",
+          "missingEvidence": []
+        },
+        "answer": {
+          "selectedOptionIds": [
+            "option-c"
+          ],
+          "value": "120",
+          "unit": "dollars",
+          "summary": "The original price was 120 dollars, since 96 is 80% of the original.",
+          "workedExplanation": [
+            "After a 20% discount the price is 80% of the original, so 0.8 × original = 96.",
+            "Original = 96 / 0.8 = 120 dollars.",
+            "Check: 20% of 120 is 24, and 120 − 24 = 96."
+          ],
+          "evidence": [
+            "Stem: a jacket costs 96 dollars after a 20% discount; asks for the price before the discount.",
+            "Options: A 115.20 dollars, B 116 dollars, C 120 dollars, D 125 dollars."
+          ],
+          "calculation": {
+            "expression": "96/(1-20%)",
+            "claimedValue": 120,
+            "decimalPlaces": null
+          },
+          "confidence": 99,
+          "numericPattern": null,
+          "gridInventory": null
+        },
+        "message": null
+      },
+      "verification": {
+        "method": "arithmetic",
+        "outcome": "passed",
+        "notes": [
+          "The displayed expression and comparable numeric answer values agree.",
+          "This checks arithmetic only; it does not independently verify image reading, formula choice, units, or the question’s meaning."
+        ]
+      },
+      "message": null,
+      "score": {
+        "schemaValid": true,
+        "categoryCorrect": true,
+        "statusCorrect": true,
+        "answerCorrect": true,
+        "shouldAbstain": false,
+        "abstained": false,
+        "criticalTextCoverage": 1,
+        "optionMappingCorrect": null,
+        "evidenceReview": {
+          "checks": [],
+          "calculationMatchesExpected": true,
+          "reviewRequired": false
+        },
+        "gridInventoryCorrect": null,
+        "evidenceReviewRequired": false
+      },
+      "gridInventoryCorrect": null,
+      "evidenceReviewRequired": false
+    },
+    {
+      "fixtureId": "selection-reverse-discount",
+      "modelId": "openai:gpt-6.2-sol",
+      "requestedModel": "gpt-6.2-sol",
+      "returnedModel": "gpt-6.2-sol",
+      "provider": "openai",
+      "outcome": "complete",
+      "durationMs": 7319,
+      "providerDurationMs": 7315,
+      "inputTokens": 3649,
+      "outputTokens": 496,
+      "validated": true,
+      "diagnostic": {
+        "code": "VALID",
+        "validationMessage": null,
+        "structuralCounts": {
+          "evidenceItems": 2,
+          "workedSteps": 2,
+          "options": 4
+        }
+      },
+      "error": null,
+      "sourceImageMatches": true,
+      "answer": {
+        "status": "solved",
+        "labels": [
+          "C."
+        ],
+        "value": "120",
+        "summary": "C. The jacket originally cost 120 dollars.",
+        "confidence": 100
+      },
+      "providerObservation": {
+        "category": "numerical",
+        "status": "solved",
+        "question": {
+          "stem": "A jacket costs 96 dollars after a 20% discount.\nWhat was its price before the discount?",
+          "instructions": [
+            "Choose one."
+          ],
+          "passage": null,
+          "options": [
+            {
+              "id": "option-1",
+              "label": "A.",
+              "text": "115.20 dollars"
+            },
+            {
+              "id": "option-2",
+              "label": "B.",
+              "text": "116 dollars"
+            },
+            {
+              "id": "option-3",
+              "label": "C.",
+              "text": "120 dollars"
+            },
+            {
+              "id": "option-4",
+              "label": "D.",
+              "text": "125 dollars"
+            }
+          ],
+          "responseType": "single_choice",
+          "missingEvidence": []
+        },
+        "answer": {
+          "selectedOptionIds": [
+            "option-3"
+          ],
+          "value": "120",
+          "unit": "dollars",
+          "summary": "C. The jacket originally cost 120 dollars.",
+          "workedExplanation": [
+            "After a 20% discount, 96 dollars is 80% of the original price. Divide 96 by 0.80 to get 120 dollars.",
+            "Check: 20% of 120 dollars is 24 dollars, and 120 − 24 = 96."
+          ],
+          "evidence": [
+            "The printed question gives a discounted price of 96 dollars and a discount of 20%.",
+            "Choice C is 120 dollars."
+          ],
+          "calculation": {
+            "expression": "96/(1-20%)",
+            "claimedValue": 120,
+            "decimalPlaces": null
+          },
+          "confidence": 100,
+          "numericPattern": null,
+          "gridInventory": null
+        },
+        "message": null
+      },
+      "verification": {
+        "method": "arithmetic",
+        "outcome": "passed",
+        "notes": [
+          "The displayed expression and comparable numeric answer values agree.",
+          "This checks arithmetic only; it does not independently verify image reading, formula choice, units, or the question’s meaning."
+        ]
+      },
+      "message": null,
+      "score": {
+        "schemaValid": true,
+        "categoryCorrect": true,
+        "statusCorrect": true,
+        "answerCorrect": true,
+        "shouldAbstain": false,
+        "abstained": false,
+        "criticalTextCoverage": 1,
+        "optionMappingCorrect": null,
+        "evidenceReview": {
+          "checks": [],
+          "calculationMatchesExpected": true,
+          "reviewRequired": false
+        },
+        "gridInventoryCorrect": null,
+        "evidenceReviewRequired": false
+      },
+      "gridInventoryCorrect": null,
+      "evidenceReviewRequired": false
+    },
+    {
+      "fixtureId": "selection-weighted-price",
+      "modelId": "anthropic:claude-sonnet-5-5",
+      "requestedModel": "claude-sonnet-5-5",
+      "returnedModel": "claude-sonnet-5-5",
+      "provider": "anthropic",
+      "outcome": "complete",
+      "durationMs": 3483,
+      "providerDurationMs": 3476,
+      "inputTokens": 6913,
+      "outputTokens": 482,
+      "validated": true,
+      "diagnostic": {
+        "code": "VALID",
+        "validationMessage": null,
+        "structuralCounts": {
+          "evidenceItems": 4,
+          "workedSteps": 2,
+          "options": 4
+        }
+      },
+      "error": null,
+      "sourceImageMatches": true,
+      "answer": {
+        "status": "ambiguous",
+        "labels": [],
+        "value": null,
+        "summary": null,
+        "confidence": null
+      },
+      "providerObservation": {
+        "category": "numerical",
+        "status": "solved",
+        "question": {
+          "stem": "A shop sells 120 units at 15 dollars each and 80 units at 21 dollars each. What is the average price per unit across all 200 units?",
+          "instructions": [],
+          "passage": null,
+          "options": [
+            {
+              "id": "option-a",
+              "label": "A",
+              "text": "18 dollars"
+            },
+            {
+              "id": "option-b",
+              "label": "B",
+              "text": "18.60 dollars"
+            },
+            {
+              "id": "option-c",
+              "label": "C",
+              "text": "19 dollars"
+            },
+            {
+              "id": "option-d",
+              "label": "D",
+              "text": "17.40 dollars"
+            }
+          ],
+          "responseType": "single_choice",
+          "missingEvidence": []
+        },
+        "answer": {
+          "selectedOptionIds": [
+            "option-b"
+          ],
+          "value": "18.6",
+          "unit": "dollars",
+          "summary": "The weighted average price is 18.60 dollars per unit.",
+          "workedExplanation": [
+            "Total revenue = 120*15 + 80*21 = 1800 + 1680 = 3480 dollars.",
+            "Average = 3480 / 200 = 18.60 dollars, which matches option B."
+          ],
+          "evidence": [
+            "120 units at 15 dollars each",
+            "80 units at 21 dollars each",
+            "Total units 200",
+            "Options: A 18, B 18.60, C 19, D 17.40 dollars"
+          ],
+          "calculation": {
+            "expression": "(120*15+80*21)/200",
+            "claimedValue": 18.6,
+            "decimalPlaces": null
+          },
+          "confidence": 99,
+          "numericPattern": null,
+          "gridInventory": null
+        },
+        "message": null
+      },
+      "verification": {
+        "method": "arithmetic",
+        "outcome": "disagreed",
+        "notes": [
+          "The expression does not equal the proposed result.",
+          "The answer value does not match the calculated result.",
+          "The selected option does not match the calculated result."
+        ]
+      },
+      "message": "The calculation and proposed answer disagree. A reliable answer is not available.",
+      "score": {
+        "schemaValid": true,
+        "categoryCorrect": true,
+        "statusCorrect": false,
+        "answerCorrect": false,
+        "shouldAbstain": false,
+        "abstained": true,
+        "criticalTextCoverage": 1,
+        "optionMappingCorrect": null,
+        "evidenceReview": {
+          "checks": [],
+          "calculationMatchesExpected": null,
+          "reviewRequired": false
+        },
+        "gridInventoryCorrect": null,
+        "evidenceReviewRequired": false
+      },
+      "gridInventoryCorrect": null,
+      "evidenceReviewRequired": false
+    },
+    {
+      "fixtureId": "selection-weighted-price",
+      "modelId": "openai:gpt-6.2-sol",
+      "requestedModel": "gpt-6.2-sol",
+      "returnedModel": "gpt-6.2-sol",
+      "provider": "openai",
+      "outcome": "complete",
+      "durationMs": 6901,
+      "providerDurationMs": 6896,
+      "inputTokens": 3649,
+      "outputTokens": 488,
+      "validated": true,
+      "diagnostic": {
+        "code": "VALID",
+        "validationMessage": null,
+        "structuralCounts": {
+          "evidenceItems": 2,
+          "workedSteps": 2,
+          "options": 4
+        }
+      },
+      "error": null,
+      "sourceImageMatches": true,
+      "answer": {
+        "status": "solved",
+        "labels": [
+          "D."
+        ],
+        "value": "17.40",
+        "summary": "D. The average price is 17.40 dollars per unit.",
+        "confidence": 100
+      },
+      "providerObservation": {
+        "category": "numerical",
+        "status": "solved",
+        "question": {
+          "stem": "A shop sells 120 units at 15 dollars each and 80 units at 21 dollars each.\nWhat is the average price per unit across all 200 units?",
+          "instructions": [],
+          "passage": null,
+          "options": [
+            {
+              "id": "option-1",
+              "label": "A.",
+              "text": "18 dollars"
+            },
+            {
+              "id": "option-2",
+              "label": "B.",
+              "text": "18.60 dollars"
+            },
+            {
+              "id": "option-3",
+              "label": "C.",
+              "text": "19 dollars"
+            },
+            {
+              "id": "option-4",
+              "label": "D.",
+              "text": "17.40 dollars"
+            }
+          ],
+          "responseType": "single_choice",
+          "missingEvidence": []
+        },
+        "answer": {
+          "selectedOptionIds": [
+            "option-4"
+          ],
+          "value": "17.40",
+          "unit": "dollars per unit",
+          "summary": "D. The average price is 17.40 dollars per unit.",
+          "workedExplanation": [
+            "Total sales are 120 × 15 + 80 × 21 = 3,480 dollars.",
+            "Divide by all 200 units: 3,480 ÷ 200 = 17.40 dollars per unit, which matches D."
+          ],
+          "evidence": [
+            "The shop sells 120 units at 15 dollars each and 80 units at 21 dollars each.",
+            "The question asks for the average price across all 200 units."
+          ],
+          "calculation": {
+            "expression": "(120*15+80*21)/200",
+            "claimedValue": 17.4,
+            "decimalPlaces": null
+          },
+          "confidence": 100,
+          "numericPattern": null,
+          "gridInventory": null
+        },
+        "message": null
+      },
+      "verification": {
+        "method": "arithmetic",
+        "outcome": "passed",
+        "notes": [
+          "The displayed expression and comparable numeric answer values agree.",
+          "This checks arithmetic only; it does not independently verify image reading, formula choice, units, or the question’s meaning."
+        ]
+      },
+      "message": null,
+      "score": {
+        "schemaValid": true,
+        "categoryCorrect": true,
+        "statusCorrect": true,
+        "answerCorrect": true,
+        "shouldAbstain": false,
+        "abstained": false,
+        "criticalTextCoverage": 1,
+        "optionMappingCorrect": null,
+        "evidenceReview": {
+          "checks": [],
+          "calculationMatchesExpected": true,
+          "reviewRequired": false
+        },
+        "gridInventoryCorrect": null,
+        "evidenceReviewRequired": false
+      },
+      "gridInventoryCorrect": null,
+      "evidenceReviewRequired": false
+    },
+    {
+      "fixtureId": "selection-relative-chart",
+      "modelId": "anthropic:claude-sonnet-5-5",
+      "requestedModel": "claude-sonnet-5-5",
+      "returnedModel": "claude-sonnet-5-5",
+      "provider": "anthropic",
+      "outcome": "complete",
+      "durationMs": 4283,
+      "providerDurationMs": 4277,
+      "inputTokens": 6913,
+      "outputTokens": 540,
+      "validated": true,
+      "diagnostic": {
+        "code": "VALID",
+        "validationMessage": null,
+        "structuralCounts": {
+          "evidenceItems": 4,
+          "workedSteps": 3,
+          "options": 4
+        }
+      },
+      "error": null,
+      "sourceImageMatches": true,
+      "answer": {
+        "status": "solved",
+        "labels": [
+          "B."
+        ],
+        "value": "Aspen",
+        "summary": "Aspen rose 33.3%, versus 20% for Birch and 20% for Cedar, so Aspen had the largest percentage increase.",
+        "confidence": 97
+      },
+      "providerObservation": {
+        "category": "data_interpretation",
+        "status": "solved",
+        "question": {
+          "stem": "Sales are shown in thousands of units. Which store had the largest PERCENTAGE increase?",
+          "instructions": [],
+          "passage": null,
+          "options": [
+            {
+              "id": "option-1",
+              "label": "A.",
+              "text": "Birch"
+            },
+            {
+              "id": "option-2",
+              "label": "B.",
+              "text": "Aspen"
+            },
+            {
+              "id": "option-3",
+              "label": "C.",
+              "text": "Cedar"
+            },
+            {
+              "id": "option-4",
+              "label": "D.",
+              "text": "All three had the same increase"
+            }
+          ],
+          "responseType": "single_choice",
+          "missingEvidence": []
+        },
+        "answer": {
+          "selectedOptionIds": [
+            "option-2"
+          ],
+          "value": "Aspen",
+          "unit": null,
+          "summary": "Aspen rose 33.3%, versus 20% for Birch and 20% for Cedar, so Aspen had the largest percentage increase.",
+          "workedExplanation": [
+            "Percentage increase = (current - previous) / previous. Aspen: (24-18)/18 = 33.3%.",
+            "Birch: (48-40)/40 = 20%. Cedar: (30-25)/25 = 20%.",
+            "Aspen's 33.3% is the largest, and the three are not equal."
+          ],
+          "evidence": [
+            "Legend: blue = Previous year, orange = Current year; sales in thousands of units.",
+            "Aspen: previous 18, current 24.",
+            "Birch: previous 40, current 48.",
+            "Cedar: previous 25, current 30."
+          ],
+          "calculation": {
+            "expression": "(24-18)/18*100",
+            "claimedValue": 33.3,
+            "decimalPlaces": 1
+          },
+          "confidence": 97,
+          "numericPattern": null,
+          "gridInventory": null
+        },
+        "message": null
+      },
+      "verification": {
+        "method": "arithmetic",
+        "outcome": "passed",
+        "notes": [
+          "The displayed expression and comparable numeric answer values agree.",
+          "This checks arithmetic only; it does not independently verify image reading, formula choice, units, or the question’s meaning."
+        ]
+      },
+      "message": null,
+      "score": {
+        "schemaValid": true,
+        "categoryCorrect": true,
+        "statusCorrect": true,
+        "answerCorrect": true,
+        "shouldAbstain": false,
+        "abstained": false,
+        "criticalTextCoverage": 1,
+        "optionMappingCorrect": null,
+        "evidenceReview": null,
+        "gridInventoryCorrect": null,
+        "evidenceReviewRequired": false
+      },
+      "gridInventoryCorrect": null,
+      "evidenceReviewRequired": false
+    },
+    {
+      "fixtureId": "selection-relative-chart",
+      "modelId": "openai:gpt-6.2-sol",
+      "requestedModel": "gpt-6.2-sol",
+      "returnedModel": "gpt-6.2-sol",
+      "provider": "openai",
+      "outcome": "complete",
+      "durationMs": 7867,
+      "providerDurationMs": 7861,
+      "inputTokens": 3649,
+      "outputTokens": 564,
+      "validated": true,
+      "diagnostic": {
+        "code": "VALID",
+        "validationMessage": null,
+        "structuralCounts": {
+          "evidenceItems": 2,
+          "workedSteps": 2,
+          "options": 4
+        }
+      },
+      "error": null,
+      "sourceImageMatches": true,
+      "answer": {
+        "status": "solved",
+        "labels": [
+          "B."
+        ],
+        "value": "Aspen",
+        "summary": "B. Aspen had the largest percentage increase: 33⅓%.",
+        "confidence": 99
+      },
+      "providerObservation": {
+        "category": "data_interpretation",
+        "status": "solved",
+        "question": {
+          "stem": "Sales are shown in thousands of units.\nWhich store had the largest PERCENTAGE increase?",
+          "instructions": [],
+          "passage": "Bar chart legend: Previous year (blue), Current year (orange). Sales in thousands of units (Previous year, Current year): Aspen (18, 24), Birch (40, 48), Cedar (25, 30). The vertical axis is marked 0, 10, 20, 30, 40, 50.",
+          "options": [
+            {
+              "id": "option-1",
+              "label": "A.",
+              "text": "Birch"
+            },
+            {
+              "id": "option-2",
+              "label": "B.",
+              "text": "Aspen"
+            },
+            {
+              "id": "option-3",
+              "label": "C.",
+              "text": "Cedar"
+            },
+            {
+              "id": "option-4",
+              "label": "D.",
+              "text": "All three had the same increase"
+            }
+          ],
+          "responseType": "single_choice",
+          "missingEvidence": []
+        },
+        "answer": {
+          "selectedOptionIds": [
+            "option-2"
+          ],
+          "value": "Aspen",
+          "unit": null,
+          "summary": "B. Aspen had the largest percentage increase: 33⅓%.",
+          "workedExplanation": [
+            "Divide each sales increase by the previous year's sales: Aspen (24 − 18)/18 = 33⅓%; Birch (48 − 40)/40 = 20%; Cedar (30 − 25)/25 = 20%.",
+            "Aspen's 33⅓% exceeds both 20% increases, so B is correct."
+          ],
+          "evidence": [
+            "The legend identifies blue as Previous year and orange as Current year.",
+            "The bar labels show Aspen 18 and 24, Birch 40 and 48, and Cedar 25 and 30, in thousands of units."
+          ],
+          "calculation": null,
+          "confidence": 99,
+          "numericPattern": null,
+          "gridInventory": null
+        },
+        "message": null
+      },
+      "verification": {
+        "method": "source_review",
+        "outcome": "not_run",
+        "notes": [
+          "AI explanation only. No independent correctness check was run."
+        ]
+      },
+      "message": null,
+      "score": {
+        "schemaValid": true,
+        "categoryCorrect": true,
+        "statusCorrect": true,
+        "answerCorrect": true,
+        "shouldAbstain": false,
+        "abstained": false,
+        "criticalTextCoverage": 1,
+        "optionMappingCorrect": null,
+        "evidenceReview": null,
+        "gridInventoryCorrect": null,
+        "evidenceReviewRequired": false
+      },
+      "gridInventoryCorrect": null,
+      "evidenceReviewRequired": false
+    },
+    {
+      "fixtureId": "selection-passage-scope",
+      "modelId": "anthropic:claude-sonnet-5-5",
+      "requestedModel": "claude-sonnet-5-5",
+      "returnedModel": "claude-sonnet-5-5",
+      "provider": "anthropic",
+      "outcome": "complete",
+      "durationMs": 4143,
+      "providerDurationMs": 4135,
+      "inputTokens": 6913,
+      "outputTokens": 536,
+      "validated": true,
+      "diagnostic": {
+        "code": "VALID",
+        "validationMessage": null,
+        "structuralCounts": {
+          "evidenceItems": 5,
+          "workedSteps": 3,
+          "options": 3
+        }
+      },
+      "error": null,
+      "sourceImageMatches": true,
+      "answer": {
+        "status": "solved",
+        "labels": [
+          "B."
+        ],
+        "value": null,
+        "summary": "The claim is False: some tracked parcels are standard, and standard parcels cannot be overnight.",
+        "confidence": 97
+      },
+      "providerObservation": {
+        "category": "verbal",
+        "status": "solved",
+        "question": {
+          "stem": "Using only the passage, evaluate the claim.",
+          "instructions": [
+            "Using only the passage, evaluate the claim."
+          ],
+          "passage": "Every overnight parcel has a tracking code. Some tracked parcels are sent by standard delivery. Standard and overnight are mutually exclusive services. CLAIM: Every parcel with a tracking code is overnight.",
+          "options": [
+            {
+              "id": "option-1",
+              "label": "A.",
+              "text": "True"
+            },
+            {
+              "id": "option-2",
+              "label": "B.",
+              "text": "False"
+            },
+            {
+              "id": "option-3",
+              "label": "C.",
+              "text": "Cannot say"
+            }
+          ],
+          "responseType": "single_choice",
+          "missingEvidence": []
+        },
+        "answer": {
+          "selectedOptionIds": [
+            "option-2"
+          ],
+          "value": null,
+          "unit": null,
+          "summary": "The claim is False: some tracked parcels are standard, and standard parcels cannot be overnight.",
+          "workedExplanation": [
+            "The passage says some tracked parcels are sent by standard delivery.",
+            "Standard and overnight are mutually exclusive, so those tracked standard parcels are not overnight.",
+            "So not every tracked parcel is overnight, and the claim is false."
+          ],
+          "evidence": [
+            "Passage: Every overnight parcel has a tracking code.",
+            "Passage: Some tracked parcels are sent by standard delivery.",
+            "Passage: Standard and overnight are mutually exclusive services.",
+            "Claim: Every parcel with a tracking code is overnight.",
+            "Choices: A. True, B. False, C. Cannot say."
+          ],
+          "calculation": null,
+          "confidence": 97,
+          "numericPattern": null,
+          "gridInventory": null
+        },
+        "message": null
+      },
+      "verification": {
+        "method": "source_review",
+        "outcome": "not_run",
+        "notes": [
+          "AI explanation only. No independent correctness check was run."
+        ]
+      },
+      "message": null,
+      "score": {
+        "schemaValid": true,
+        "categoryCorrect": true,
+        "statusCorrect": true,
+        "answerCorrect": true,
+        "shouldAbstain": false,
+        "abstained": false,
+        "criticalTextCoverage": 1,
+        "optionMappingCorrect": null,
+        "evidenceReview": null,
+        "gridInventoryCorrect": null,
+        "evidenceReviewRequired": false
+      },
+      "gridInventoryCorrect": null,
+      "evidenceReviewRequired": false
+    },
+    {
+      "fixtureId": "selection-passage-scope",
+      "modelId": "openai:gpt-6.2-sol",
+      "requestedModel": "gpt-6.2-sol",
+      "returnedModel": "gpt-6.2-sol",
+      "provider": "openai",
+      "outcome": "complete",
+      "durationMs": 6850,
+      "providerDurationMs": 6823,
+      "inputTokens": 3649,
+      "outputTokens": 496,
+      "validated": true,
+      "diagnostic": {
+        "code": "VALID",
+        "validationMessage": null,
+        "structuralCounts": {
+          "evidenceItems": 3,
+          "workedSteps": 2,
+          "options": 3
+        }
+      },
+      "error": null,
+      "sourceImageMatches": true,
+      "answer": {
+        "status": "solved",
+        "labels": [
+          "B."
+        ],
+        "value": "False",
+        "summary": "B. False — some parcels have tracking codes but are sent by standard delivery, not overnight.",
+        "confidence": 100
+      },
+      "providerObservation": {
+        "category": "verbal",
+        "status": "solved",
+        "question": {
+          "stem": "CLAIM: Every parcel with a tracking code is overnight.\nUsing only the passage, evaluate the claim.",
+          "instructions": [
+            "Using only the passage, evaluate the claim."
+          ],
+          "passage": "PASSAGE: Every overnight parcel has a tracking code.\nSome tracked parcels are sent by standard delivery.\nStandard and overnight are mutually exclusive services.",
+          "options": [
+            {
+              "id": "option-a",
+              "label": "A.",
+              "text": "True"
+            },
+            {
+              "id": "option-b",
+              "label": "B.",
+              "text": "False"
+            },
+            {
+              "id": "option-c",
+              "label": "C.",
+              "text": "Cannot say"
+            }
+          ],
+          "responseType": "single_choice",
+          "missingEvidence": []
+        },
+        "answer": {
+          "selectedOptionIds": [
+            "option-b"
+          ],
+          "value": "False",
+          "unit": null,
+          "summary": "B. False — some parcels have tracking codes but are sent by standard delivery, not overnight.",
+          "workedExplanation": [
+            "The passage states that some tracked parcels are sent by standard delivery. Because standard and overnight are mutually exclusive, those parcels are not overnight.",
+            "Those parcels are counterexamples to the claim that every parcel with a tracking code is overnight."
+          ],
+          "evidence": [
+            "Every overnight parcel has a tracking code.",
+            "Some tracked parcels are sent by standard delivery.",
+            "Standard and overnight are mutually exclusive services."
+          ],
+          "calculation": null,
+          "confidence": 100,
+          "numericPattern": null,
+          "gridInventory": null
+        },
+        "message": null
+      },
+      "verification": {
+        "method": "source_review",
+        "outcome": "not_run",
+        "notes": [
+          "AI explanation only. No independent correctness check was run."
+        ]
+      },
+      "message": null,
+      "score": {
+        "schemaValid": true,
+        "categoryCorrect": true,
+        "statusCorrect": true,
+        "answerCorrect": true,
+        "shouldAbstain": false,
+        "abstained": false,
+        "criticalTextCoverage": 1,
+        "optionMappingCorrect": null,
+        "evidenceReview": null,
+        "gridInventoryCorrect": null,
+        "evidenceReviewRequired": false
+      },
+      "gridInventoryCorrect": null,
+      "evidenceReviewRequired": false
+    },
+    {
+      "fixtureId": "selection-necessary-assumption",
+      "modelId": "anthropic:claude-sonnet-5-5",
+      "requestedModel": "claude-sonnet-5-5",
+      "returnedModel": "claude-sonnet-5-5",
+      "provider": "anthropic",
+      "outcome": "complete",
+      "durationMs": 4631,
+      "providerDurationMs": 4625,
+      "inputTokens": 6913,
+      "outputTokens": 625,
+      "validated": true,
+      "diagnostic": {
+        "code": "VALID",
+        "validationMessage": null,
+        "structuralCounts": {
+          "evidenceItems": 3,
+          "workedSteps": 3,
+          "options": 4
+        }
+      },
+      "error": null,
+      "sourceImageMatches": true,
+      "answer": {
+        "status": "solved",
+        "labels": [
+          "D."
+        ],
+        "value": null,
+        "summary": "D is the necessary assumption: both pumps running at full rate only doubles delivery if the shared supply and pipes can handle the combined flow.",
+        "confidence": 96
+      },
+      "providerObservation": {
+        "category": "critical_reasoning",
+        "status": "solved",
+        "question": {
+          "stem": "A planner argues: installing a second water pump will double the volume delivered each hour because both pumps can run at the same rate as the current pump. Which assumption is necessary for this argument?",
+          "instructions": [],
+          "passage": null,
+          "options": [
+            {
+              "id": "option-1",
+              "label": "A.",
+              "text": "The pumps are painted the same colour."
+            },
+            {
+              "id": "option-2",
+              "label": "B.",
+              "text": "Water demand will double next year."
+            },
+            {
+              "id": "option-3",
+              "label": "C.",
+              "text": "Both pumps were made by the same company."
+            },
+            {
+              "id": "option-4",
+              "label": "D.",
+              "text": "The shared supply and pipes can sustain the combined flow."
+            }
+          ],
+          "responseType": "single_choice",
+          "missingEvidence": []
+        },
+        "answer": {
+          "selectedOptionIds": [
+            "option-4"
+          ],
+          "value": null,
+          "unit": null,
+          "summary": "D is the necessary assumption: both pumps running at full rate only doubles delivery if the shared supply and pipes can handle the combined flow.",
+          "workedExplanation": [
+            "Conclusion: a second pump doubles hourly volume. Premise: both pumps can run at the same rate as the current pump.",
+            "The argument needs both pumps to actually run at that rate together. If the shared supply and pipes cannot sustain the combined flow, delivery would not double, so the argument fails. D is therefore necessary.",
+            "Colour (A), future demand (B), and manufacturer (C) are irrelevant to the volume delivered, so negating them does not undermine the argument."
+          ],
+          "evidence": [
+            "Stem: second pump will double hourly volume because both pumps can run at the same rate as the current pump.",
+            "Option D: The shared supply and pipes can sustain the combined flow.",
+            "Options A, B, C concern paint colour, next year's demand and manufacturer."
+          ],
+          "calculation": null,
+          "confidence": 96,
+          "numericPattern": null,
+          "gridInventory": null
+        },
+        "message": null
+      },
+      "verification": {
+        "method": "source_review",
+        "outcome": "not_run",
+        "notes": [
+          "AI explanation only. No independent correctness check was run."
+        ]
+      },
+      "message": null,
+      "score": {
+        "schemaValid": true,
+        "categoryCorrect": true,
+        "statusCorrect": true,
+        "answerCorrect": true,
+        "shouldAbstain": false,
+        "abstained": false,
+        "criticalTextCoverage": 1,
+        "optionMappingCorrect": null,
+        "evidenceReview": null,
+        "gridInventoryCorrect": null,
+        "evidenceReviewRequired": false
+      },
+      "gridInventoryCorrect": null,
+      "evidenceReviewRequired": false
+    },
+    {
+      "fixtureId": "selection-necessary-assumption",
+      "modelId": "openai:gpt-6.2-sol",
+      "requestedModel": "gpt-6.2-sol",
+      "returnedModel": "gpt-6.2-sol",
+      "provider": "openai",
+      "outcome": "complete",
+      "durationMs": 6742,
+      "providerDurationMs": 6737,
+      "inputTokens": 3649,
+      "outputTokens": 487,
+      "validated": true,
+      "diagnostic": {
+        "code": "VALID",
+        "validationMessage": null,
+        "structuralCounts": {
+          "evidenceItems": 3,
+          "workedSteps": 2,
+          "options": 4
+        }
+      },
+      "error": null,
+      "sourceImageMatches": true,
+      "answer": {
+        "status": "solved",
+        "labels": [
+          "D."
+        ],
+        "value": null,
+        "summary": "D. The shared supply and pipes must be able to sustain the combined flow.",
+        "confidence": 99
+      },
+      "providerObservation": {
+        "category": "critical_reasoning",
+        "status": "solved",
+        "question": {
+          "stem": "A planner argues: installing a second water pump will double the volume delivered each hour because both pumps can run at the same rate as the current pump.\nWhich assumption is necessary for this argument?",
+          "instructions": [],
+          "passage": null,
+          "options": [
+            {
+              "id": "option-1",
+              "label": "A.",
+              "text": "The pumps are painted the same colour."
+            },
+            {
+              "id": "option-2",
+              "label": "B.",
+              "text": "Water demand will double next year."
+            },
+            {
+              "id": "option-3",
+              "label": "C.",
+              "text": "Both pumps were made by the same company."
+            },
+            {
+              "id": "option-4",
+              "label": "D.",
+              "text": "The shared supply and pipes can sustain the combined flow."
+            }
+          ],
+          "responseType": "single_choice",
+          "missingEvidence": []
+        },
+        "answer": {
+          "selectedOptionIds": [
+            "option-4"
+          ],
+          "value": null,
+          "unit": null,
+          "summary": "D. The shared supply and pipes must be able to sustain the combined flow.",
+          "workedExplanation": [
+            "The planner concludes that hourly delivery will double because each pump can run at the current pump’s rate.",
+            "Negate D: if the shared supply and pipes cannot sustain both pumps’ combined flow, their individual rates do not translate into twice the delivered volume. Paint colour, future demand and manufacturer do not resolve that bottleneck."
+          ],
+          "evidence": [
+            "The stated premise is that both pumps can run at the same rate as the current pump.",
+            "The claimed result is double the volume delivered each hour.",
+            "Option D concerns whether the shared supply and pipes can sustain the combined flow."
+          ],
+          "calculation": null,
+          "confidence": 99,
+          "numericPattern": null,
+          "gridInventory": null
+        },
+        "message": null
+      },
+      "verification": {
+        "method": "source_review",
+        "outcome": "not_run",
+        "notes": [
+          "AI explanation only. No independent correctness check was run."
+        ]
+      },
+      "message": null,
+      "score": {
+        "schemaValid": true,
+        "categoryCorrect": true,
+        "statusCorrect": true,
+        "answerCorrect": true,
+        "shouldAbstain": false,
+        "abstained": false,
+        "criticalTextCoverage": 1,
+        "optionMappingCorrect": null,
+        "evidenceReview": null,
+        "gridInventoryCorrect": null,
+        "evidenceReviewRequired": false
+      },
+      "gridInventoryCorrect": null,
+      "evidenceReviewRequired": false
+    },
+    {
+      "fixtureId": "selection-five-order",
+      "modelId": "anthropic:claude-sonnet-5-5",
+      "requestedModel": "claude-sonnet-5-5",
+      "returnedModel": "claude-sonnet-5-5",
+      "provider": "anthropic",
+      "outcome": "complete",
+      "durationMs": 3772,
+      "providerDurationMs": 3767,
+      "inputTokens": 6913,
+      "outputTokens": 560,
+      "validated": true,
+      "diagnostic": {
+        "code": "VALID",
+        "validationMessage": null,
+        "structuralCounts": {
+          "evidenceItems": 3,
+          "workedSteps": 2,
+          "options": 4
+        }
+      },
+      "error": null,
+      "sourceImageMatches": true,
+      "answer": {
+        "status": "solved",
+        "labels": [
+          "A"
+        ],
+        "value": "Ben",
+        "summary": "The only valid order is Ada, Dev, Ben, Cara, Eli, so Ben is in the middle (position 3).",
+        "confidence": 97
+      },
+      "providerObservation": {
+        "category": "logical",
+        "status": "solved",
+        "question": {
+          "stem": "Ada, Ben, Cara, Dev and Eli stand in one line. Ben is immediately after Dev. Ada is before Dev. Cara is after Ben. Eli is last. Who must be in the middle position? Choose one.",
+          "instructions": [
+            "Choose one."
+          ],
+          "passage": null,
+          "options": [
+            {
+              "id": "option-1",
+              "label": "A",
+              "text": "Ben"
+            },
+            {
+              "id": "option-2",
+              "label": "B",
+              "text": "Dev"
+            },
+            {
+              "id": "option-3",
+              "label": "C",
+              "text": "Cara"
+            },
+            {
+              "id": "option-4",
+              "label": "D",
+              "text": "Ada"
+            }
+          ],
+          "responseType": "single_choice",
+          "missingEvidence": []
+        },
+        "answer": {
+          "selectedOptionIds": [
+            "option-1"
+          ],
+          "value": "Ben",
+          "unit": null,
+          "summary": "The only valid order is Ada, Dev, Ben, Cara, Eli, so Ben is in the middle (position 3).",
+          "workedExplanation": [
+            "Eli is last (position 5). Ada < Dev, Ben immediately follows Dev, and Cara is after Ben, so the order is Ada, Dev, Ben, Cara.",
+            "With Eli in position 5, the order is Ada, Dev, Ben, Cara, Eli. Ben is in position 3, the middle."
+          ],
+          "evidence": [
+            "Five people: Ada, Ben, Cara, Dev, Eli in a line.",
+            "Constraints: Dev immediately before Ben; Ada before Dev; Cara after Ben; Eli last.",
+            "Options: A Ben, B Dev, C Cara, D Ada."
+          ],
+          "calculation": null,
+          "confidence": 97,
+          "numericPattern": null,
+          "gridInventory": null
+        },
+        "message": null
+      },
+      "verification": {
+        "method": "source_review",
+        "outcome": "not_run",
+        "notes": [
+          "AI explanation only. No independent correctness check was run."
+        ]
+      },
+      "message": null,
+      "score": {
+        "schemaValid": true,
+        "categoryCorrect": true,
+        "statusCorrect": true,
+        "answerCorrect": true,
+        "shouldAbstain": false,
+        "abstained": false,
+        "criticalTextCoverage": 1,
+        "optionMappingCorrect": null,
+        "evidenceReview": null,
+        "gridInventoryCorrect": null,
+        "evidenceReviewRequired": false
+      },
+      "gridInventoryCorrect": null,
+      "evidenceReviewRequired": false
+    },
+    {
+      "fixtureId": "selection-five-order",
+      "modelId": "openai:gpt-6.2-sol",
+      "requestedModel": "gpt-6.2-sol",
+      "returnedModel": "gpt-6.2-sol",
+      "provider": "openai",
+      "outcome": "complete",
+      "durationMs": 5458,
+      "providerDurationMs": 5452,
+      "inputTokens": 3649,
+      "outputTokens": 391,
+      "validated": true,
+      "diagnostic": {
+        "code": "VALID",
+        "validationMessage": null,
+        "structuralCounts": {
+          "evidenceItems": 3,
+          "workedSteps": 2,
+          "options": 4
+        }
+      },
+      "error": null,
+      "sourceImageMatches": true,
+      "answer": {
+        "status": "solved",
+        "labels": [
+          "A"
+        ],
+        "value": "Ben",
+        "summary": "A. Ben must be in the middle.",
+        "confidence": 100
+      },
+      "providerObservation": {
+        "category": "logical",
+        "status": "solved",
+        "question": {
+          "stem": "Ada, Ben, Cara, Dev and Eli stand in one line.\nBen is immediately after Dev. Ada is before Dev.\nCara is after Ben. Eli is last.\nWho must be in the middle position? Choose one.",
+          "instructions": [
+            "Choose one."
+          ],
+          "passage": null,
+          "options": [
+            {
+              "id": "option-1",
+              "label": "A",
+              "text": "Ben"
+            },
+            {
+              "id": "option-2",
+              "label": "B",
+              "text": "Dev"
+            },
+            {
+              "id": "option-3",
+              "label": "C",
+              "text": "Cara"
+            },
+            {
+              "id": "option-4",
+              "label": "D",
+              "text": "Ada"
+            }
+          ],
+          "responseType": "single_choice",
+          "missingEvidence": []
+        },
+        "answer": {
+          "selectedOptionIds": [
+            "option-1"
+          ],
+          "value": "Ben",
+          "unit": null,
+          "summary": "A. Ben must be in the middle.",
+          "workedExplanation": [
+            "Ada is before Dev, Ben is immediately after Dev, and Cara is after Ben. With Eli last, the only order is Ada, Dev, Ben, Cara, Eli.",
+            "Ben is third out of five, so he is in the middle."
+          ],
+          "evidence": [
+            "Five people stand in one line.",
+            "Ben is immediately after Dev, and Ada is before Dev.",
+            "Cara is after Ben, and Eli is last."
+          ],
+          "calculation": null,
+          "confidence": 100,
+          "numericPattern": null,
+          "gridInventory": null
+        },
+        "message": null
+      },
+      "verification": {
+        "method": "source_review",
+        "outcome": "not_run",
+        "notes": [
+          "AI explanation only. No independent correctness check was run."
+        ]
+      },
+      "message": null,
+      "score": {
+        "schemaValid": true,
+        "categoryCorrect": true,
+        "statusCorrect": true,
+        "answerCorrect": true,
+        "shouldAbstain": false,
+        "abstained": false,
+        "criticalTextCoverage": 1,
+        "optionMappingCorrect": null,
+        "evidenceReview": null,
+        "gridInventoryCorrect": null,
+        "evidenceReviewRequired": false
+      },
+      "gridInventoryCorrect": null,
+      "evidenceReviewRequired": false
+    },
+    {
+      "fixtureId": "selection-quantifier-multiselect",
+      "modelId": "anthropic:claude-sonnet-5-5",
+      "requestedModel": "claude-sonnet-5-5",
+      "returnedModel": "claude-sonnet-5-5",
+      "provider": "anthropic",
+      "outcome": "complete",
+      "durationMs": 4557,
+      "providerDurationMs": 4552,
+      "inputTokens": 6913,
+      "outputTokens": 582,
+      "validated": true,
+      "diagnostic": {
+        "code": "VALID",
+        "validationMessage": null,
+        "structuralCounts": {
+          "evidenceItems": 4,
+          "workedSteps": 3,
+          "options": 4
+        }
+      },
+      "error": null,
+      "sourceImageMatches": true,
+      "answer": {
+        "status": "solved",
+        "labels": [
+          "A",
+          "C"
+        ],
+        "value": null,
+        "summary": "A and C necessarily follow; B contradicts the premises and D is not supported.",
+        "confidence": 97
+      },
+      "providerObservation": {
+        "category": "logical",
+        "status": "solved",
+        "question": {
+          "stem": "Every wug is blue. No blue object is hollow. Some wugs are triangular. Select ALL conclusions that necessarily follow.",
+          "instructions": [
+            "Select ALL conclusions that necessarily follow."
+          ],
+          "passage": null,
+          "options": [
+            {
+              "id": "option-1",
+              "label": "A",
+              "text": "Some triangular objects are blue."
+            },
+            {
+              "id": "option-2",
+              "label": "B",
+              "text": "Some hollow objects are wugs."
+            },
+            {
+              "id": "option-3",
+              "label": "C",
+              "text": "No wug is hollow."
+            },
+            {
+              "id": "option-4",
+              "label": "D",
+              "text": "Every triangular object is a wug."
+            }
+          ],
+          "responseType": "multiple_choice",
+          "missingEvidence": []
+        },
+        "answer": {
+          "selectedOptionIds": [
+            "option-1",
+            "option-3"
+          ],
+          "value": null,
+          "unit": null,
+          "summary": "A and C necessarily follow; B contradicts the premises and D is not supported.",
+          "workedExplanation": [
+            "Some wugs are triangular, and every wug is blue, so those triangular wugs are blue: some triangular objects are blue (A follows).",
+            "Every wug is blue and no blue object is hollow, so no wug is hollow (C follows). This makes B false.",
+            "D reverses the 'Some wugs are triangular' premise; non-wug triangular objects may exist, so D does not follow."
+          ],
+          "evidence": [
+            "Premise 1: Every wug is blue.",
+            "Premise 2: No blue object is hollow.",
+            "Premise 3: Some wugs are triangular.",
+            "Options A-D: A Some triangular objects are blue; B Some hollow objects are wugs; C No wug is hollow; D Every triangular object is a wug."
+          ],
+          "calculation": null,
+          "confidence": 97,
+          "numericPattern": null,
+          "gridInventory": null
+        },
+        "message": null
+      },
+      "verification": {
+        "method": "source_review",
+        "outcome": "not_run",
+        "notes": [
+          "AI explanation only. No independent correctness check was run."
+        ]
+      },
+      "message": null,
+      "score": {
+        "schemaValid": true,
+        "categoryCorrect": true,
+        "statusCorrect": true,
+        "answerCorrect": true,
+        "shouldAbstain": false,
+        "abstained": false,
+        "criticalTextCoverage": 1,
+        "optionMappingCorrect": null,
+        "evidenceReview": null,
+        "gridInventoryCorrect": null,
+        "evidenceReviewRequired": false
+      },
+      "gridInventoryCorrect": null,
+      "evidenceReviewRequired": false
+    },
+    {
+      "fixtureId": "selection-quantifier-multiselect",
+      "modelId": "openai:gpt-6.2-sol",
+      "requestedModel": "gpt-6.2-sol",
+      "returnedModel": "gpt-6.2-sol",
+      "provider": "openai",
+      "outcome": "complete",
+      "durationMs": 6813,
+      "providerDurationMs": 6808,
+      "inputTokens": 3649,
+      "outputTokens": 494,
+      "validated": true,
+      "diagnostic": {
+        "code": "VALID",
+        "validationMessage": null,
+        "structuralCounts": {
+          "evidenceItems": 3,
+          "workedSteps": 3,
+          "options": 4
+        }
+      },
+      "error": null,
+      "sourceImageMatches": true,
+      "answer": {
+        "status": "solved",
+        "labels": [
+          "A.",
+          "C."
+        ],
+        "value": null,
+        "summary": "Only A and C necessarily follow.",
+        "confidence": 100
+      },
+      "providerObservation": {
+        "category": "logical",
+        "status": "solved",
+        "question": {
+          "stem": "Every wug is blue. No blue object is hollow.\nSome wugs are triangular.\nSelect ALL conclusions that necessarily follow.",
+          "instructions": [
+            "Select ALL conclusions that necessarily follow."
+          ],
+          "passage": null,
+          "options": [
+            {
+              "id": "option-1",
+              "label": "A.",
+              "text": "Some triangular objects are blue."
+            },
+            {
+              "id": "option-2",
+              "label": "B.",
+              "text": "Some hollow objects are wugs."
+            },
+            {
+              "id": "option-3",
+              "label": "C.",
+              "text": "No wug is hollow."
+            },
+            {
+              "id": "option-4",
+              "label": "D.",
+              "text": "Every triangular object is a wug."
+            }
+          ],
+          "responseType": "multiple_choice",
+          "missingEvidence": []
+        },
+        "answer": {
+          "selectedOptionIds": [
+            "option-1",
+            "option-3"
+          ],
+          "value": null,
+          "unit": null,
+          "summary": "Only A and C necessarily follow.",
+          "workedExplanation": [
+            "Some wugs are triangular, and every wug is blue. Those triangular wugs are therefore blue, so A follows.",
+            "Every wug is blue, and no blue object is hollow. Therefore no wug is hollow: C follows, and B is contradicted.",
+            "The premises allow a triangular object that is not a wug, so D does not necessarily follow."
+          ],
+          "evidence": [
+            "Every wug is blue.",
+            "No blue object is hollow.",
+            "Some wugs are triangular."
+          ],
+          "calculation": null,
+          "confidence": 100,
+          "numericPattern": null,
+          "gridInventory": null
+        },
+        "message": null
+      },
+      "verification": {
+        "method": "source_review",
+        "outcome": "not_run",
+        "notes": [
+          "AI explanation only. No independent correctness check was run."
+        ]
+      },
+      "message": null,
+      "score": {
+        "schemaValid": true,
+        "categoryCorrect": true,
+        "statusCorrect": true,
+        "answerCorrect": true,
+        "shouldAbstain": false,
+        "abstained": false,
+        "criticalTextCoverage": 1,
+        "optionMappingCorrect": null,
+        "evidenceReview": null,
+        "gridInventoryCorrect": null,
+        "evidenceReviewRequired": false
+      },
+      "gridInventoryCorrect": null,
+      "evidenceReviewRequired": false
+    },
+    {
+      "fixtureId": "selection-ordered-transform",
+      "modelId": "anthropic:claude-sonnet-5-5",
+      "requestedModel": "claude-sonnet-5-5",
+      "returnedModel": "claude-sonnet-5-5",
+      "provider": "anthropic",
+      "outcome": "complete",
+      "durationMs": 9407,
+      "providerDurationMs": 9401,
+      "inputTokens": 6913,
+      "outputTokens": 1365,
+      "validated": true,
+      "diagnostic": {
+        "code": "VALID",
+        "validationMessage": null,
+        "structuralCounts": {
+          "evidenceItems": 5,
+          "workedSteps": 2,
+          "options": 4
+        }
+      },
+      "error": null,
+      "sourceImageMatches": true,
+      "answer": {
+        "status": "solved",
+        "labels": [
+          "D"
+        ],
+        "value": null,
+        "summary": "Option D is the result of reflecting the source left to right and then rotating it 90° clockwise.",
+        "confidence": 97
+      },
+      "providerObservation": {
+        "category": "spatial",
+        "status": "solved",
+        "question": {
+          "stem": "Reflect the source left to right, THEN rotate the result 90 degrees clockwise. Which option is the final pattern?",
+          "instructions": [],
+          "passage": null,
+          "options": [
+            {
+              "id": "option-1",
+              "label": "A",
+              "text": "3x3 grid with filled cells at top-middle, top-right, middle-left and bottom-middle"
+            },
+            {
+              "id": "option-2",
+              "label": "B",
+              "text": "3x3 grid with filled cells at top-right, middle-left, middle-right and bottom-middle"
+            },
+            {
+              "id": "option-3",
+              "label": "C",
+              "text": "3x3 grid with filled cells at top-left, middle-left, middle-right and bottom-middle"
+            },
+            {
+              "id": "option-4",
+              "label": "D",
+              "text": "3x3 grid with filled cells at top-middle, middle-left, middle-right and bottom-right"
+            }
+          ],
+          "responseType": "single_choice",
+          "missingEvidence": []
+        },
+        "answer": {
+          "selectedOptionIds": [
+            "option-4"
+          ],
+          "value": null,
+          "unit": null,
+          "summary": "Option D is the result of reflecting the source left to right and then rotating it 90° clockwise.",
+          "workedExplanation": [
+            "Reflecting left to right gives filled cells r1c2, r1c3, r2c1, r3c2.",
+            "Rotating 90° clockwise makes each old column, read bottom to top, a new row. This gives rows: .X. / X.X / ..X, which are filled cells r1c2, r2c1, r2c3, r3c3. This matches D."
+          ],
+          "evidence": [
+            "Source 3x3: filled r1c1, r1c2, r2c3, r3c2.",
+            "A: r1c2, r1c3, r2c1, r3c2.",
+            "B: r1c3, r2c1, r2c3, r3c2.",
+            "C: r1c1, r2c1, r2c3, r3c2.",
+            "D: r1c2, r2c1, r2c3, r3c3."
+          ],
+          "calculation": null,
+          "confidence": 97,
+          "numericPattern": null,
+          "gridInventory": {
+            "rows": 1,
+            "columns": 1,
+            "cellRows": 3,
+            "cellColumns": 3,
+            "panels": [
+              {
+                "row": 1,
+                "column": 1,
+                "filledCells": [
+                  "r1c1",
+                  "r1c2",
+                  "r2c3",
+                  "r3c2"
+                ]
+              }
+            ],
+            "options": [
+              {
+                "optionId": "option-1",
+                "filledCells": [
+                  "r1c2",
+                  "r1c3",
+                  "r2c1",
+                  "r3c2"
+                ]
+              },
+              {
+                "optionId": "option-2",
+                "filledCells": [
+                  "r1c3",
+                  "r2c1",
+                  "r2c3",
+                  "r3c2"
+                ]
+              },
+              {
+                "optionId": "option-3",
+                "filledCells": [
+                  "r1c1",
+                  "r2c1",
+                  "r2c3",
+                  "r3c2"
+                ]
+              },
+              {
+                "optionId": "option-4",
+                "filledCells": [
+                  "r1c2",
+                  "r2c1",
+                  "r2c3",
+                  "r3c3"
+                ]
+              }
+            ]
+          }
+        },
+        "message": null
+      },
+      "verification": {
+        "method": "source_review",
+        "outcome": "not_run",
+        "notes": [
+          "AI explanation only. No independent correctness check was run."
+        ]
+      },
+      "message": null,
+      "score": {
+        "schemaValid": true,
+        "categoryCorrect": true,
+        "statusCorrect": true,
+        "answerCorrect": true,
+        "shouldAbstain": false,
+        "abstained": false,
+        "criticalTextCoverage": 1,
+        "optionMappingCorrect": null,
+        "evidenceReview": null,
+        "gridInventoryCorrect": null,
+        "evidenceReviewRequired": false
+      },
+      "gridInventoryCorrect": null,
+      "evidenceReviewRequired": false
+    },
+    {
+      "fixtureId": "selection-ordered-transform",
+      "modelId": "openai:gpt-6.2-sol",
+      "requestedModel": "gpt-6.2-sol",
+      "returnedModel": "gpt-6.2-sol",
+      "provider": "openai",
+      "outcome": "complete",
+      "durationMs": 12628,
+      "providerDurationMs": 12622,
+      "inputTokens": 3649,
+      "outputTokens": 976,
+      "validated": true,
+      "diagnostic": {
+        "code": "VALID",
+        "validationMessage": null,
+        "structuralCounts": {
+          "evidenceItems": 1,
+          "workedSteps": 2,
+          "options": 4
+        }
+      },
+      "error": null,
+      "sourceImageMatches": true,
+      "answer": {
+        "status": "solved",
+        "labels": [
+          "D"
+        ],
+        "value": null,
+        "summary": "D is the result of reflecting first and then rotating clockwise.",
+        "confidence": 99
+      },
+      "providerObservation": {
+        "category": "spatial",
+        "status": "solved",
+        "question": {
+          "stem": "Reflect the source left to right, THEN rotate the result 90 degrees clockwise. Which option is the final pattern?",
+          "instructions": [],
+          "passage": null,
+          "options": [
+            {
+              "id": "option-1",
+              "label": "A",
+              "text": "3 × 3 grid with two adjacent filled cells in the top row, at the center and right."
+            },
+            {
+              "id": "option-2",
+              "label": "B",
+              "text": "3 × 3 grid with the top-right and middle-right cells filled."
+            },
+            {
+              "id": "option-3",
+              "label": "C",
+              "text": "3 × 3 grid with the top-left and middle-left cells filled."
+            },
+            {
+              "id": "option-4",
+              "label": "D",
+              "text": "3 × 3 grid with the top-center and bottom-right cells filled."
+            }
+          ],
+          "responseType": "single_choice",
+          "missingEvidence": []
+        },
+        "answer": {
+          "selectedOptionIds": [
+            "option-4"
+          ],
+          "value": null,
+          "unit": null,
+          "summary": "D is the result of reflecting first and then rotating clockwise.",
+          "workedExplanation": [
+            "The left-to-right reflection moves the source’s top-left cell to the top-right. The clockwise turn then moves it to the bottom-right, which is filled only in D.",
+            "The source’s middle-right cell moves to the middle-left after reflection and then to the top-center after rotation. The source’s two filled center-column cells become the two ends of the middle row. All four cells match D."
+          ],
+          "evidence": [
+            "The source and all four choices are 3 × 3 grids, each with four dark teal cells and a white center cell."
+          ],
+          "calculation": null,
+          "confidence": 99,
+          "numericPattern": null,
+          "gridInventory": {
+            "rows": 1,
+            "columns": 1,
+            "cellRows": 3,
+            "cellColumns": 3,
+            "panels": [
+              {
+                "row": 1,
+                "column": 1,
+                "filledCells": [
+                  "r1c1",
+                  "r1c2",
+                  "r2c3",
+                  "r3c2"
+                ]
+              }
+            ],
+            "options": [
+              {
+                "optionId": "option-1",
+                "filledCells": [
+                  "r1c2",
+                  "r1c3",
+                  "r2c1",
+                  "r3c2"
+                ]
+              },
+              {
+                "optionId": "option-2",
+                "filledCells": [
+                  "r1c3",
+                  "r2c1",
+                  "r2c3",
+                  "r3c2"
+                ]
+              },
+              {
+                "optionId": "option-3",
+                "filledCells": [
+                  "r1c1",
+                  "r2c1",
+                  "r2c3",
+                  "r3c2"
+                ]
+              },
+              {
+                "optionId": "option-4",
+                "filledCells": [
+                  "r1c2",
+                  "r2c1",
+                  "r2c3",
+                  "r3c3"
+                ]
+              }
+            ]
+          }
+        },
+        "message": null
+      },
+      "verification": {
+        "method": "source_review",
+        "outcome": "not_run",
+        "notes": [
+          "AI explanation only. No independent correctness check was run."
+        ]
+      },
+      "message": null,
+      "score": {
+        "schemaValid": true,
+        "categoryCorrect": true,
+        "statusCorrect": true,
+        "answerCorrect": true,
+        "shouldAbstain": false,
+        "abstained": false,
+        "criticalTextCoverage": 1,
+        "optionMappingCorrect": null,
+        "evidenceReview": null,
+        "gridInventoryCorrect": null,
+        "evidenceReviewRequired": false
+      },
+      "gridInventoryCorrect": null,
+      "evidenceReviewRequired": false
+    },
+    {
+      "fixtureId": "selection-grid-combination",
+      "modelId": "anthropic:claude-sonnet-5-5",
+      "requestedModel": "claude-sonnet-5-5",
+      "returnedModel": "claude-sonnet-5-5",
+      "provider": "anthropic",
+      "outcome": "complete",
+      "durationMs": 13650,
+      "providerDurationMs": 13642,
+      "inputTokens": 6913,
+      "outputTokens": 2261,
+      "validated": true,
+      "diagnostic": {
+        "code": "VALID",
+        "validationMessage": null,
+        "structuralCounts": {
+          "evidenceItems": 4,
+          "workedSteps": 3,
+          "options": 4
+        }
+      },
+      "error": null,
+      "sourceImageMatches": true,
+      "answer": {
+        "status": "solved",
+        "labels": [
+          "B"
+        ],
+        "value": null,
+        "summary": "Each row's third panel is the exclusive-or of its first two panels. Row 3 gives the four corners, which is option B.",
+        "confidence": 95
+      },
+      "providerObservation": {
+        "category": "abstract",
+        "status": "solved",
+        "question": {
+          "stem": "The same combination rule applies across each row. Use the first two panels to find the missing third panel.",
+          "instructions": [
+            "The same combination rule applies across each row.",
+            "Use the first two panels to find the missing third panel."
+          ],
+          "passage": null,
+          "options": [
+            {
+              "id": "A",
+              "label": "A",
+              "text": "3x3 grid with filled cells at top-left, top-right, centre, bottom-left"
+            },
+            {
+              "id": "B",
+              "label": "B",
+              "text": "3x3 grid with filled cells at the four corners only"
+            },
+            {
+              "id": "C",
+              "label": "C",
+              "text": "3x3 grid with filled cells at top-right, centre, bottom-left, bottom-right"
+            },
+            {
+              "id": "D",
+              "label": "D",
+              "text": "3x3 grid with filled cells at top-left, centre, bottom-left, bottom-right"
+            }
+          ],
+          "responseType": "single_choice",
+          "missingEvidence": []
+        },
+        "answer": {
+          "selectedOptionIds": [
+            "B"
+          ],
+          "value": null,
+          "unit": null,
+          "summary": "Each row's third panel is the exclusive-or of its first two panels. Row 3 gives the four corners, which is option B.",
+          "workedExplanation": [
+            "Row 1: the panels share r2c2, and that cell is empty in the third panel. Every other filled cell appears in the third panel, so the rule is XOR (a cell is filled if it is filled in exactly one of the first two panels).",
+            "Row 2 check: XOR of {r1c2,r2c1,r3c1} and {r1c2,r2c3,r3c1} is {r2c1,r2c3}, which matches panel 3.",
+            "Row 3: XOR of {r1c3,r2c2,r3c1} and {r1c1,r2c2,r3c3} drops the shared centre and leaves the four corners {r1c1,r1c3,r3c1,r3c3}. This matches option B."
+          ],
+          "evidence": [
+            "Row 1 panels: P1 r1c1,r2c2,r3c2; P2 r1c2,r2c2,r3c3; P3 r1c1,r1c2,r3c2,r3c3.",
+            "Row 2 panels: P1 r1c2,r2c1,r3c1; P2 r1c2,r2c3,r3c1; P3 r2c1,r2c3.",
+            "Row 3 panels: P1 r1c3,r2c2,r3c1; P2 r1c1,r2c2,r3c3; P3 is a question mark.",
+            "Options: A r1c1,r1c3,r2c2,r3c1; B four corners; C r1c3,r2c2,r3c1,r3c3; D r1c1,r2c2,r3c1,r3c3."
+          ],
+          "calculation": null,
+          "confidence": 95,
+          "numericPattern": null,
+          "gridInventory": {
+            "rows": 3,
+            "columns": 3,
+            "cellRows": 3,
+            "cellColumns": 3,
+            "panels": [
+              {
+                "row": 1,
+                "column": 1,
+                "filledCells": [
+                  "r1c1",
+                  "r2c2",
+                  "r3c2"
+                ]
+              },
+              {
+                "row": 1,
+                "column": 2,
+                "filledCells": [
+                  "r1c2",
+                  "r2c2",
+                  "r3c3"
+                ]
+              },
+              {
+                "row": 1,
+                "column": 3,
+                "filledCells": [
+                  "r1c1",
+                  "r1c2",
+                  "r3c2",
+                  "r3c3"
+                ]
+              },
+              {
+                "row": 2,
+                "column": 1,
+                "filledCells": [
+                  "r1c2",
+                  "r2c1",
+                  "r3c1"
+                ]
+              },
+              {
+                "row": 2,
+                "column": 2,
+                "filledCells": [
+                  "r1c2",
+                  "r2c3",
+                  "r3c1"
+                ]
+              },
+              {
+                "row": 2,
+                "column": 3,
+                "filledCells": [
+                  "r2c1",
+                  "r2c3"
+                ]
+              },
+              {
+                "row": 3,
+                "column": 1,
+                "filledCells": [
+                  "r1c3",
+                  "r2c2",
+                  "r3c1"
+                ]
+              },
+              {
+                "row": 3,
+                "column": 2,
+                "filledCells": [
+                  "r1c1",
+                  "r2c2",
+                  "r3c3"
+                ]
+              },
+              {
+                "row": 3,
+                "column": 3,
+                "filledCells": null
+              }
+            ],
+            "options": [
+              {
+                "optionId": "A",
+                "filledCells": [
+                  "r1c1",
+                  "r1c3",
+                  "r2c2",
+                  "r3c1"
+                ]
+              },
+              {
+                "optionId": "B",
+                "filledCells": [
+                  "r1c1",
+                  "r1c3",
+                  "r3c1",
+                  "r3c3"
+                ]
+              },
+              {
+                "optionId": "C",
+                "filledCells": [
+                  "r1c3",
+                  "r2c2",
+                  "r3c1",
+                  "r3c3"
+                ]
+              },
+              {
+                "optionId": "D",
+                "filledCells": [
+                  "r1c1",
+                  "r2c2",
+                  "r3c1",
+                  "r3c3"
+                ]
+              }
+            ]
+          }
+        },
+        "message": null
+      },
+      "verification": {
+        "method": "source_review",
+        "outcome": "not_run",
+        "notes": [
+          "AI explanation only. No independent correctness check was run."
+        ]
+      },
+      "message": null,
+      "score": {
+        "schemaValid": true,
+        "categoryCorrect": true,
+        "statusCorrect": true,
+        "answerCorrect": true,
+        "shouldAbstain": false,
+        "abstained": false,
+        "criticalTextCoverage": 1,
+        "optionMappingCorrect": null,
+        "evidenceReview": null,
+        "gridInventoryCorrect": true,
+        "evidenceReviewRequired": false
+      },
+      "gridInventoryCorrect": true,
+      "evidenceReviewRequired": false
+    },
+    {
+      "fixtureId": "selection-grid-combination",
+      "modelId": "openai:gpt-6.2-sol",
+      "requestedModel": "gpt-6.2-sol",
+      "returnedModel": "gpt-6.2-sol",
+      "provider": "openai",
+      "outcome": "complete",
+      "durationMs": 15486,
+      "providerDurationMs": 15478,
+      "inputTokens": 3649,
+      "outputTokens": 1262,
+      "validated": true,
+      "diagnostic": {
+        "code": "VALID",
+        "validationMessage": null,
+        "structuralCounts": {
+          "evidenceItems": 2,
+          "workedSteps": 2,
+          "options": 4
+        }
+      },
+      "error": null,
+      "sourceImageMatches": true,
+      "answer": {
+        "status": "solved",
+        "labels": [
+          "B"
+        ],
+        "value": null,
+        "summary": "B. Keep the cells filled in exactly one of the first two panels.",
+        "confidence": 99
+      },
+      "providerObservation": {
+        "category": "abstract",
+        "status": "solved",
+        "question": {
+          "stem": "The same combination rule applies across each row.\nUse the first two panels to find the missing third panel.",
+          "instructions": [],
+          "passage": null,
+          "options": [
+            {
+              "id": "A",
+              "label": "A",
+              "text": "Filled at top left, top right, center, and bottom left."
+            },
+            {
+              "id": "B",
+              "label": "B",
+              "text": "Filled at all four corners."
+            },
+            {
+              "id": "C",
+              "label": "C",
+              "text": "Filled at top right, center, bottom left, and bottom right."
+            },
+            {
+              "id": "D",
+              "label": "D",
+              "text": "Filled at top left, center, bottom left, and bottom right."
+            }
+          ],
+          "responseType": "single_choice",
+          "missingEvidence": []
+        },
+        "answer": {
+          "selectedOptionIds": [
+            "B"
+          ],
+          "value": null,
+          "unit": null,
+          "summary": "B. Keep the cells filled in exactly one of the first two panels.",
+          "workedExplanation": [
+            "Overlay the first two panels in each row. In the top row, the shared center cell cancels, leaving four filled cells. In the middle row, the shared top-middle and bottom-left cells cancel, leaving only the two filled cells in the middle row of the grid. Both results match the printed third panels.",
+            "In the bottom row, the shared center cancels and the four corners remain. Only B matches."
+          ],
+          "evidence": [
+            "The source panels are arranged in three rows and three columns, with a question mark in the bottom-right position.",
+            "Each visible panel and choice is a 3 × 3 grid with dark teal filled cells. The printed result panels contain four filled cells in the top row and two in the middle row."
+          ],
+          "calculation": null,
+          "confidence": 99,
+          "numericPattern": null,
+          "gridInventory": {
+            "rows": 3,
+            "columns": 3,
+            "cellRows": 3,
+            "cellColumns": 3,
+            "panels": [
+              {
+                "row": 1,
+                "column": 1,
+                "filledCells": [
+                  "r1c1",
+                  "r2c2",
+                  "r3c2"
+                ]
+              },
+              {
+                "row": 1,
+                "column": 2,
+                "filledCells": [
+                  "r1c2",
+                  "r2c2",
+                  "r3c3"
+                ]
+              },
+              {
+                "row": 1,
+                "column": 3,
+                "filledCells": [
+                  "r1c1",
+                  "r1c2",
+                  "r3c2",
+                  "r3c3"
+                ]
+              },
+              {
+                "row": 2,
+                "column": 1,
+                "filledCells": [
+                  "r1c2",
+                  "r2c1",
+                  "r3c1"
+                ]
+              },
+              {
+                "row": 2,
+                "column": 2,
+                "filledCells": [
+                  "r1c2",
+                  "r2c3",
+                  "r3c1"
+                ]
+              },
+              {
+                "row": 2,
+                "column": 3,
+                "filledCells": [
+                  "r2c1",
+                  "r2c3"
+                ]
+              },
+              {
+                "row": 3,
+                "column": 1,
+                "filledCells": [
+                  "r1c3",
+                  "r2c2",
+                  "r3c1"
+                ]
+              },
+              {
+                "row": 3,
+                "column": 2,
+                "filledCells": [
+                  "r1c1",
+                  "r2c2",
+                  "r3c3"
+                ]
+              },
+              {
+                "row": 3,
+                "column": 3,
+                "filledCells": null
+              }
+            ],
+            "options": [
+              {
+                "optionId": "A",
+                "filledCells": [
+                  "r1c1",
+                  "r1c3",
+                  "r2c2",
+                  "r3c1"
+                ]
+              },
+              {
+                "optionId": "B",
+                "filledCells": [
+                  "r1c1",
+                  "r1c3",
+                  "r3c1",
+                  "r3c3"
+                ]
+              },
+              {
+                "optionId": "C",
+                "filledCells": [
+                  "r1c3",
+                  "r2c2",
+                  "r3c1",
+                  "r3c3"
+                ]
+              },
+              {
+                "optionId": "D",
+                "filledCells": [
+                  "r1c1",
+                  "r2c2",
+                  "r3c1",
+                  "r3c3"
+                ]
+              }
+            ]
+          }
+        },
+        "message": null
+      },
+      "verification": {
+        "method": "source_review",
+        "outcome": "not_run",
+        "notes": [
+          "AI explanation only. No independent correctness check was run."
+        ]
+      },
+      "message": null,
+      "score": {
+        "schemaValid": true,
+        "categoryCorrect": true,
+        "statusCorrect": true,
+        "answerCorrect": true,
+        "shouldAbstain": false,
+        "abstained": false,
+        "criticalTextCoverage": 1,
+        "optionMappingCorrect": null,
+        "evidenceReview": null,
+        "gridInventoryCorrect": true,
+        "evidenceReviewRequired": false
+      },
+      "gridInventoryCorrect": true,
+      "evidenceReviewRequired": false
+    },
+    {
+      "fixtureId": "selection-count-shape-values",
+      "modelId": "anthropic:claude-sonnet-5-5",
+      "requestedModel": "claude-sonnet-5-5",
+      "returnedModel": "claude-sonnet-5-5",
+      "provider": "anthropic",
+      "outcome": "complete",
+      "durationMs": 5062,
+      "providerDurationMs": 5054,
+      "inputTokens": 6913,
+      "outputTokens": 640,
+      "validated": true,
+      "diagnostic": {
+        "code": "VALID",
+        "validationMessage": null,
+        "structuralCounts": {
+          "evidenceItems": 4,
+          "workedSteps": 3,
+          "options": 4
+        }
+      },
+      "error": null,
+      "sourceImageMatches": true,
+      "answer": {
+        "status": "ambiguous",
+        "labels": [],
+        "value": null,
+        "summary": null,
+        "confidence": null
+      },
+      "providerObservation": {
+        "category": "numerical",
+        "status": "solved",
+        "question": {
+          "stem": "Each circle has one fixed value; each square has another. A panel's total is the sum of the values of its shapes. What is the final total? Choose one.",
+          "instructions": [
+            "Choose one."
+          ],
+          "passage": null,
+          "options": [
+            {
+              "id": "option-1",
+              "label": "A.",
+              "text": "20"
+            },
+            {
+              "id": "option-2",
+              "label": "B.",
+              "text": "21"
+            },
+            {
+              "id": "option-3",
+              "label": "C.",
+              "text": "22"
+            },
+            {
+              "id": "option-4",
+              "label": "D.",
+              "text": "23"
+            }
+          ],
+          "responseType": "single_choice",
+          "missingEvidence": []
+        },
+        "answer": {
+          "selectedOptionIds": [
+            "option-2"
+          ],
+          "value": "21",
+          "unit": null,
+          "summary": "Circle = 4, square = 5, so 3 circles + 2 squares = 12 + 10 = 22... recheck: solving gives circle 4, square 5 only if c+2s=14 and 2c+s=13.",
+          "workedExplanation": [
+            "Let circle = c and square = s. Panel 1: c + 2s = 14. Panel 2: 2c + s = 13.",
+            "Adding gives 3c + 3s = 27, so c + s = 9. Then s = 14 - 9 = 5 and c = 4. Check: 4+10=14, 8+5=13.",
+            "Panel 3 has 3 circles and 2 squares: 3(4) + 2(5) = 12 + 10 = 22."
+          ],
+          "evidence": [
+            "Panel 1: 1 circle, 2 squares, total 14.",
+            "Panel 2: 2 circles, 1 square, total 13.",
+            "Panel 3: 3 circles in top row, 2 squares in bottom row, total shown as ?.",
+            "Options: A. 20, B. 21, C. 22, D. 23."
+          ],
+          "calculation": {
+            "expression": "3*4+2*5",
+            "claimedValue": 22,
+            "decimalPlaces": null
+          },
+          "confidence": 97,
+          "numericPattern": null,
+          "gridInventory": null
+        },
+        "message": null
+      },
+      "verification": {
+        "method": "arithmetic",
+        "outcome": "disagreed",
+        "notes": [
+          "The answer value does not match the calculated result.",
+          "The selected option does not match the calculated result."
+        ]
+      },
+      "message": "The calculation and proposed answer disagree. A reliable answer is not available.",
+      "score": {
+        "schemaValid": true,
+        "categoryCorrect": true,
+        "statusCorrect": false,
+        "answerCorrect": false,
+        "shouldAbstain": false,
+        "abstained": true,
+        "criticalTextCoverage": 1,
+        "optionMappingCorrect": null,
+        "evidenceReview": {
+          "checks": [],
+          "calculationMatchesExpected": null,
+          "reviewRequired": false
+        },
+        "gridInventoryCorrect": null,
+        "evidenceReviewRequired": false
+      },
+      "gridInventoryCorrect": null,
+      "evidenceReviewRequired": false
+    },
+    {
+      "fixtureId": "selection-count-shape-values",
+      "modelId": "openai:gpt-6.2-sol",
+      "requestedModel": "gpt-6.2-sol",
+      "returnedModel": "gpt-6.2-sol",
+      "provider": "openai",
+      "outcome": "complete",
+      "durationMs": 8393,
+      "providerDurationMs": 8385,
+      "inputTokens": 3649,
+      "outputTokens": 647,
+      "validated": true,
+      "diagnostic": {
+        "code": "VALID",
+        "validationMessage": null,
+        "structuralCounts": {
+          "evidenceItems": 3,
+          "workedSteps": 3,
+          "options": 4
+        }
+      },
+      "error": null,
+      "sourceImageMatches": true,
+      "answer": {
+        "status": "solved",
+        "labels": [
+          "C."
+        ],
+        "value": "22",
+        "summary": "C. 22",
+        "confidence": 99
+      },
+      "providerObservation": {
+        "category": "numerical",
+        "status": "solved",
+        "question": {
+          "stem": "Each circle has one fixed value; each square has another.\nA panel's total is the sum of the values of its shapes.\nWhat is the final total? Choose one.",
+          "instructions": [
+            "Choose one."
+          ],
+          "passage": null,
+          "options": [
+            {
+              "id": "option-a",
+              "label": "A.",
+              "text": "20"
+            },
+            {
+              "id": "option-b",
+              "label": "B.",
+              "text": "21"
+            },
+            {
+              "id": "option-c",
+              "label": "C.",
+              "text": "22"
+            },
+            {
+              "id": "option-d",
+              "label": "D.",
+              "text": "23"
+            }
+          ],
+          "responseType": "single_choice",
+          "missingEvidence": []
+        },
+        "answer": {
+          "selectedOptionIds": [
+            "option-c"
+          ],
+          "value": "22",
+          "unit": null,
+          "summary": "C. 22",
+          "workedExplanation": [
+            "Doubling the middle total and subtracting the left total cancels the squares, leaving three circles worth 2 × 13 − 14 = 12. Each circle is worth 4.",
+            "The left panel then gives (14 − 4) ÷ 2 = 5 per square. This also checks the middle total: 2 × 4 + 5 = 13.",
+            "The final panel totals 3 × 4 + 2 × 5 = 22."
+          ],
+          "evidence": [
+            "The left panel shows a circle followed by two squares, with 14 below.",
+            "The middle panel shows two circles followed by a square, with 13 below.",
+            "The right panel shows three circles across the top and two squares beneath the first two circles, with a question mark below."
+          ],
+          "calculation": {
+            "expression": "14+2*(2*13-14)/3",
+            "claimedValue": 22,
+            "decimalPlaces": null
+          },
+          "confidence": 99,
+          "numericPattern": null,
+          "gridInventory": null
+        },
+        "message": null
+      },
+      "verification": {
+        "method": "arithmetic",
+        "outcome": "passed",
+        "notes": [
+          "The displayed expression and comparable numeric answer values agree.",
+          "This checks arithmetic only; it does not independently verify image reading, formula choice, units, or the question’s meaning."
+        ]
+      },
+      "message": null,
+      "score": {
+        "schemaValid": true,
+        "categoryCorrect": true,
+        "statusCorrect": true,
+        "answerCorrect": true,
+        "shouldAbstain": false,
+        "abstained": false,
+        "criticalTextCoverage": 1,
+        "optionMappingCorrect": null,
+        "evidenceReview": {
+          "checks": [],
+          "calculationMatchesExpected": true,
+          "reviewRequired": false
+        },
+        "gridInventoryCorrect": null,
+        "evidenceReviewRequired": false
+      },
+      "gridInventoryCorrect": null,
+      "evidenceReviewRequired": false
+    },
+    {
+      "fixtureId": "selection-two-valid-rules",
+      "modelId": "anthropic:claude-sonnet-5-5",
+      "requestedModel": "claude-sonnet-5-5",
+      "returnedModel": "claude-sonnet-5-5",
+      "provider": "anthropic",
+      "outcome": "complete",
+      "durationMs": 4150,
+      "providerDurationMs": 4140,
+      "inputTokens": 6913,
+      "outputTokens": 440,
+      "validated": true,
+      "diagnostic": {
+        "code": "VALID",
+        "validationMessage": null,
+        "structuralCounts": {
+          "evidenceItems": null,
+          "workedSteps": null,
+          "options": 2
+        }
+      },
+      "error": null,
+      "sourceImageMatches": true,
+      "answer": {
+        "status": "ambiguous",
+        "labels": [],
+        "value": null,
+        "summary": null,
+        "confidence": null
+      },
+      "providerObservation": {
+        "category": "logical",
+        "status": "ambiguous",
+        "question": {
+          "stem": "The starting number is 7. Choose EITHER operation: subtract 3 OR divide by 7. Both operations are permitted. All rules are shown; there is no additional tie-breaker. Which SINGLE next value is uniquely determined?",
+          "instructions": [],
+          "passage": null,
+          "options": [
+            {
+              "id": "option-A",
+              "label": "A.",
+              "text": "4"
+            },
+            {
+              "id": "option-B",
+              "label": "B.",
+              "text": "1"
+            }
+          ],
+          "responseType": "single_choice",
+          "missingEvidence": []
+        },
+        "answer": null,
+        "message": "No option is uniquely determined. Subtracting 3 from 7 gives 4 and dividing 7 by 7 gives 1. Both operations are explicitly permitted, and the question says there is no tie-breaker. Either value can occur, so neither A nor B is forced. The question has no valid single answer as written."
+      },
+      "verification": {
+        "method": "none",
+        "outcome": "not_run",
+        "notes": [
+          "No completed answer was published."
+        ]
+      },
+      "message": "No option is uniquely determined. Subtracting 3 from 7 gives 4 and dividing 7 by 7 gives 1. Both operations are explicitly permitted, and the question says there is no tie-breaker. Either value can occur, so neither A nor B is forced. The question has no valid single answer as written.",
+      "score": {
+        "schemaValid": true,
+        "categoryCorrect": true,
+        "statusCorrect": true,
+        "answerCorrect": true,
+        "shouldAbstain": true,
+        "abstained": true,
+        "criticalTextCoverage": 1,
+        "optionMappingCorrect": null,
+        "evidenceReview": null,
+        "gridInventoryCorrect": null,
+        "evidenceReviewRequired": false
+      },
+      "gridInventoryCorrect": null,
+      "evidenceReviewRequired": false
+    },
+    {
+      "fixtureId": "selection-two-valid-rules",
+      "modelId": "openai:gpt-6.2-sol",
+      "requestedModel": "gpt-6.2-sol",
+      "returnedModel": "gpt-6.2-sol",
+      "provider": "openai",
+      "outcome": "complete",
+      "durationMs": 6310,
+      "providerDurationMs": 6302,
+      "inputTokens": 3649,
+      "outputTokens": 413,
+      "validated": true,
+      "diagnostic": {
+        "code": "VALID",
+        "validationMessage": null,
+        "structuralCounts": {
+          "evidenceItems": null,
+          "workedSteps": null,
+          "options": 2
+        }
+      },
+      "error": null,
+      "sourceImageMatches": true,
+      "answer": {
+        "status": "ambiguous",
+        "labels": [],
+        "value": null,
+        "summary": null,
+        "confidence": null
+      },
+      "providerObservation": {
+        "category": "numerical",
+        "status": "ambiguous",
+        "question": {
+          "stem": "The starting number is 7. Choose EITHER operation:\nsubtract 3 OR divide by 7. Both operations are permitted.\nAll rules are shown; there is no additional tie-breaker.\nWhich SINGLE next value is uniquely determined?",
+          "instructions": [
+            "Choose EITHER operation:\nsubtract 3 OR divide by 7. Both operations are permitted."
+          ],
+          "passage": null,
+          "options": [
+            {
+              "id": "option-1",
+              "label": "A.",
+              "text": "4"
+            },
+            {
+              "id": "option-2",
+              "label": "B.",
+              "text": "1"
+            }
+          ],
+          "responseType": "single_choice",
+          "missingEvidence": []
+        },
+        "answer": null,
+        "message": "Subtracting 3 gives 7 − 3 = 4 (A); dividing by 7 gives 7 ÷ 7 = 1 (B). Both operations are permitted, so neither value is uniquely determined."
+      },
+      "verification": {
+        "method": "none",
+        "outcome": "not_run",
+        "notes": [
+          "No completed answer was published."
+        ]
+      },
+      "message": "Subtracting 3 gives 7 − 3 = 4 (A); dividing by 7 gives 7 ÷ 7 = 1 (B). Both operations are permitted, so neither value is uniquely determined.",
+      "score": {
+        "schemaValid": true,
+        "categoryCorrect": false,
+        "statusCorrect": true,
+        "answerCorrect": true,
+        "shouldAbstain": true,
+        "abstained": true,
+        "criticalTextCoverage": 1,
+        "optionMappingCorrect": null,
+        "evidenceReview": null,
+        "gridInventoryCorrect": null,
+        "evidenceReviewRequired": false
+      },
+      "gridInventoryCorrect": null,
+      "evidenceReviewRequired": false
+    },
+    {
+      "fixtureId": "selection-cropped-turn-choices",
+      "modelId": "anthropic:claude-sonnet-5-5",
+      "requestedModel": "claude-sonnet-5-5",
+      "returnedModel": "claude-sonnet-5-5",
+      "provider": "anthropic",
+      "outcome": "complete",
+      "durationMs": 4487,
+      "providerDurationMs": 4480,
+      "inputTokens": 6679,
+      "outputTokens": 419,
+      "validated": true,
+      "diagnostic": {
+        "code": "VALID",
+        "validationMessage": null,
+        "structuralCounts": {
+          "evidenceItems": null,
+          "workedSteps": null,
+          "options": 0
+        }
+      },
+      "error": null,
+      "sourceImageMatches": true,
+      "answer": {
+        "status": "needs_capture",
+        "labels": [],
+        "value": null,
+        "summary": null,
+        "confidence": null
+      },
+      "providerObservation": {
+        "category": "spatial",
+        "status": "needs_capture",
+        "question": {
+          "stem": "Rotate the source 90 degrees counterclockwise. Choose the option showing the resulting pattern.",
+          "instructions": [
+            "Rotate the source 90 degrees counterclockwise.",
+            "Choose the option showing the resulting pattern."
+          ],
+          "passage": null,
+          "options": [],
+          "responseType": "single_choice",
+          "missingEvidence": [
+            "The pattern graphics for choices A, B, C and D are not visible; only the labels A, B, C, D appear at the bottom of the screenshot, and the image is cut off below them."
+          ]
+        },
+        "answer": null,
+        "message": "The answer choices are cropped out of the screenshot. Only the labels A-D are visible, so no option can be matched to the rotated source. Please capture the full question including all four option patterns beneath the labels."
+      },
+      "verification": {
+        "method": "none",
+        "outcome": "not_run",
+        "notes": [
+          "No completed answer was published."
+        ]
+      },
+      "message": "The answer choices are cropped out of the screenshot. Only the labels A-D are visible, so no option can be matched to the rotated source. Please capture the full question including all four option patterns beneath the labels.",
+      "score": {
+        "schemaValid": true,
+        "categoryCorrect": true,
+        "statusCorrect": true,
+        "answerCorrect": true,
+        "shouldAbstain": true,
+        "abstained": true,
+        "criticalTextCoverage": 1,
+        "optionMappingCorrect": null,
+        "evidenceReview": null,
+        "gridInventoryCorrect": null,
+        "evidenceReviewRequired": false
+      },
+      "gridInventoryCorrect": null,
+      "evidenceReviewRequired": false
+    },
+    {
+      "fixtureId": "selection-cropped-turn-choices",
+      "modelId": "openai:gpt-6.2-sol",
+      "requestedModel": "gpt-6.2-sol",
+      "returnedModel": "gpt-6.2-sol",
+      "provider": "openai",
+      "outcome": "complete",
+      "durationMs": 6850,
+      "providerDurationMs": 6842,
+      "inputTokens": 3404,
+      "outputTokens": 421,
+      "validated": true,
+      "diagnostic": {
+        "code": "VALID",
+        "validationMessage": null,
+        "structuralCounts": {
+          "evidenceItems": null,
+          "workedSteps": null,
+          "options": 0
+        }
+      },
+      "error": null,
+      "sourceImageMatches": true,
+      "answer": {
+        "status": "needs_capture",
+        "labels": [],
+        "value": null,
+        "summary": null,
+        "confidence": null
+      },
+      "providerObservation": {
+        "category": "spatial",
+        "status": "needs_capture",
+        "question": {
+          "stem": "Rotate the source 90 degrees counterclockwise.\nChoose the option showing the resulting pattern.",
+          "instructions": [],
+          "passage": "SOURCE: A 3 × 3 grid. The top row is teal, white, teal; the middle row is teal, teal, white; the bottom row is all white.",
+          "options": [],
+          "responseType": "single_choice",
+          "missingEvidence": [
+            "The option grids for A, B, C, and D are cropped out below their visible labels."
+          ]
+        },
+        "answer": null,
+        "message": "Please send a complete screenshot showing the source grid and all four option grids beneath A–D."
+      },
+      "verification": {
+        "method": "none",
+        "outcome": "not_run",
+        "notes": [
+          "No completed answer was published."
+        ]
+      },
+      "message": "Please send a complete screenshot showing the source grid and all four option grids beneath A–D.",
+      "score": {
+        "schemaValid": true,
+        "categoryCorrect": true,
+        "statusCorrect": true,
+        "answerCorrect": true,
+        "shouldAbstain": true,
+        "abstained": true,
+        "criticalTextCoverage": 1,
+        "optionMappingCorrect": null,
+        "evidenceReview": null,
+        "gridInventoryCorrect": null,
+        "evidenceReviewRequired": false
+      },
+      "gridInventoryCorrect": null,
+      "evidenceReviewRequired": false
+    }
+  ],
+  "releaseGate": {
+    "passed": true,
+    "complete": true,
+    "phase": "complete",
+    "environment": "production",
+    "configuredModels": [
+      "anthropic:claude-sonnet-5-5",
+      "openai:gpt-6.2-sol"
+    ],
+    "commit": "f2f47c19d2551886b84355470b83260f5e5593ca",
+    "plannedCalls": 8,
+    "callsStarted": 8,
+    "summary": {
+      "objectiveCandidatesCorrect": 6,
+      "objectiveCandidatesAttempted": 6,
+      "boundaryCandidatesCorrect": 2,
+      "boundaryCandidatesAttempted": 2,
+      "evidenceReviewFlagged": 0,
+      "providerFailures": 0,
+      "resolvedObjectiveSelections": 0,
+      "conservativeObjectiveAbstentions": 3
+    },
+    "failure": null,
+    "report": "/aptitude-readiness.json"
+  },
+  "pairedObjectiveTimings": [
+    {
+      "fixtureId": "selection-reverse-discount",
+      "firstUsableMs": 6124,
+      "bothFinishedMs": 7319,
+      "earlierByMs": 1195
+    },
+    {
+      "fixtureId": "selection-weighted-price",
+      "firstUsableMs": 6901,
+      "bothFinishedMs": 6901,
+      "earlierByMs": 0
+    },
+    {
+      "fixtureId": "selection-relative-chart",
+      "firstUsableMs": 4283,
+      "bothFinishedMs": 7867,
+      "earlierByMs": 3584
+    },
+    {
+      "fixtureId": "selection-passage-scope",
+      "firstUsableMs": 4143,
+      "bothFinishedMs": 6850,
+      "earlierByMs": 2707
+    },
+    {
+      "fixtureId": "selection-necessary-assumption",
+      "firstUsableMs": 4631,
+      "bothFinishedMs": 6742,
+      "earlierByMs": 2111
+    },
+    {
+      "fixtureId": "selection-five-order",
+      "firstUsableMs": 3772,
+      "bothFinishedMs": 5458,
+      "earlierByMs": 1686
+    },
+    {
+      "fixtureId": "selection-quantifier-multiselect",
+      "firstUsableMs": 4557,
+      "bothFinishedMs": 6813,
+      "earlierByMs": 2256
+    },
+    {
+      "fixtureId": "selection-ordered-transform",
+      "firstUsableMs": 9407,
+      "bothFinishedMs": 12628,
+      "earlierByMs": 3221
+    },
+    {
+      "fixtureId": "selection-grid-combination",
+      "firstUsableMs": 13650,
+      "bothFinishedMs": 15486,
+      "earlierByMs": 1836
+    },
+    {
+      "fixtureId": "selection-count-shape-values",
+      "firstUsableMs": 8393,
+      "bothFinishedMs": 8393,
+      "earlierByMs": 0
+    }
+  ],
+  "timingSummary": {
+    "method": "Pair single-arm server durationMs by fixture; first usable excludes non-solved post-check responses. Conventional even-sample medians; not Safari UI measurements.",
+    "objectiveFixtures": 10,
+    "earlierUsableAnswerCount": 8,
+    "firstUsableMedianMs": 5377.5,
+    "bothFinishedMedianMs": 7110.0,
+    "firstUsableMeanMs": 6586.1,
+    "bothFinishedMeanMs": 8445.7,
+    "pairedSavingMedianMs": 1973.5,
+    "pairedSavingMeanMs": 1859.6
+  },
+  "ownedPracticeBrowserCheck": {
+    "browser": "Cloud Chromium",
+    "fixture": "App-authored percentage-increase practice question",
+    "captureSize": [
+      1000,
+      600
+    ],
+    "firstAnswerMs": 4591,
+    "bothCompletedMs": 7048,
+    "suggestions": [
+      {
+        "modelId": "anthropic:claude-sonnet-5-5",
+        "answer": "25",
+        "confidenceEstimate": 99,
+        "durationMs": 3996
+      },
+      {
+        "modelId": "openai:gpt-6.2-sol",
+        "answer": "25",
+        "confidenceEstimate": 100,
+        "durationMs": 6458
+      }
+    ],
+    "sessionExportValidated": true,
+    "submittedAnswersRecorded": false,
+    "accuracyOfUserSession": null,
+    "sameTabReloadRestoredAnswers": true
+  },
+  "limitations": [
+    "Ten objective questions plus two boundary cases per model; previously used regression fixtures, not an untouched holdout or general assessment accuracy.",
+    "The user-reported 40-question Safari evaluation was not accessible and is not represented in this report.",
+    "Confidence is uncalibrated: Claude proposed two incorrect answers with97 and99confidence; arithmetic checks correctly withheld both.",
+    "The four-image release gate passed6/6objective candidate answers and2/2boundary statuses; strict source reconciliation withheld all3combined objective selections.",
+    "Provider-side paired timing excludes capture, network delivery, reading and external answer submission. The single live-browser timing is a separate observation.",
+    "Only structured visible answers from authored fixtures are retained; no provider thinking blocks, credentials, personal screenshots or user assessment answers."
+  ]
+}

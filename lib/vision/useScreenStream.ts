@@ -17,6 +17,7 @@ const JPEG_QUALITY = 0.6
 const DIFF_THUMB = 64 // luma thumbnail size for the perceptual diff
 const DIFF_THRESHOLD = 0.02 // mean-abs-diff (0..1) below which the screen is "unchanged"
 const APTITUDE_FINGERPRINT_EDGE = 512
+const FIRST_FRAME_TIMEOUT_MS = 10_000
 
 type ScreenStreamOptions = { preferNativeResolution?: boolean }
 
@@ -34,7 +35,9 @@ type AptitudeRasterSample = (AvailableScreenFingerprint & { canvas: HTMLCanvasEl
 // resizeMode is in the Screen Capture specification, but not all DOM typings
 // or browsers expose it yet; unsupported hints are ignored by the browser.
 const DETAILED_SCREEN_CONSTRAINTS: MediaTrackConstraints & { resizeMode: ConstrainDOMString } = {
-  width: { ideal: 4096 }, height: { ideal: 4096 },
+  // One size preference lets WebKit retain a window's intrinsic aspect ratio.
+  // Equal width/height preferences can introduce a square capture surface.
+  width: { ideal: 4096 },
   frameRate: { ideal: 5, max: 10 }, resizeMode: { ideal: 'none' },
 }
 
@@ -42,14 +45,71 @@ type ScreenRun = {
   stream: MediaStream | null
   video: HTMLVideoElement | null
   onEnded: (() => void) | null
+  onMute: (() => void) | null
+  onUnmute: (() => void) | null
+  controller: AbortController
 }
 
 function disposeRun(run: ScreenRun) {
-  if (run.onEnded) run.stream?.getVideoTracks().forEach((track) => track.removeEventListener('ended', run.onEnded!))
+  run.controller.abort()
+  run.stream?.getVideoTracks().forEach((track) => {
+    if (run.onEnded) track.removeEventListener('ended', run.onEnded)
+    if (run.onMute) track.removeEventListener('mute', run.onMute)
+    if (run.onUnmute) track.removeEventListener('unmute', run.onUnmute)
+  })
   run.stream?.getTracks().forEach((track) => track.stop())
   if (run.video) run.video.srcObject = null
   run.video = null
   run.stream = null
+}
+
+class CaptureReadinessError extends Error {}
+
+function sourceName(track: MediaStreamTrack): string {
+  try { if (track.getSettings?.().displaySurface === 'window') return 'window' } catch { /* optional source metadata */ }
+  return 'screen'
+}
+
+function frameUnavailable(video: HTMLVideoElement, track: MediaStreamTrack | undefined): string | null {
+  if (!track || track.readyState === 'ended') return 'The shared source has ended. Share it again to capture a question.'
+  if (track.muted || track.enabled === false) return `The shared ${sourceName(track)} is not providing frames. Restore the window and keep it visible, or choose Screen in the sharing dialog.`
+  if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || !video.videoWidth || !video.videoHeight) return 'Waiting for a readable frame from the shared source. Keep its window visible and try again.'
+  return null
+}
+
+/** A grant (and even dimensions) is not enough to draw a decoded video frame.
+ * Bound initialization after the picker returns, including a stalled play(). */
+function playFirstFrame(video: HTMLVideoElement, track: MediaStreamTrack, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let settled = false
+    let playing = false
+    const events = ['loadeddata', 'canplay', 'playing', 'resize']
+    const finish = (error?: unknown) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+      clearInterval(poll)
+      for (const event of events) video.removeEventListener(event, check)
+      track.removeEventListener('unmute', check)
+      signal.removeEventListener('abort', abort)
+      if (error) reject(error)
+      else resolve()
+    }
+    const check = () => {
+      if (track.readyState === 'ended') finish(new CaptureReadinessError('The selected source stopped before a frame was available. Restore its window and share it again.'))
+      else if (playing && !frameUnavailable(video, track)) finish()
+    }
+    const abort = () => finish(new DOMException('Sharing setup was cancelled.', 'AbortError'))
+    const timeout = setTimeout(() => finish(new CaptureReadinessError(`The shared ${sourceName(track)} did not provide a readable frame. Restore the window and share it again, or choose Screen in the sharing dialog.`)), FIRST_FRAME_TIMEOUT_MS)
+    // Some engines update dimensions without a useful media event during window
+    // initialization. This bounded local poll does not capture or upload images.
+    const poll = setInterval(check, 100)
+    for (const event of events) video.addEventListener(event, check)
+    track.addEventListener('unmute', check)
+    signal.addEventListener('abort', abort, { once: true })
+    if (signal.aborted) { abort(); return }
+    try { void video.play().then(() => { playing = true; check() }, error => finish(error ?? new Error('Could not play the shared video'))) } catch (error) { finish(error) }
+  })
 }
 
 export function useScreenStream({ preferNativeResolution = false }: ScreenStreamOptions = {}) {
@@ -94,7 +154,7 @@ export function useScreenStream({ preferNativeResolution = false }: ScreenStream
 
   const start = useCallback(async () => {
     if (!mountedRef.current || runRef.current) return
-    const run: ScreenRun = { stream: null, video: null, onEnded: null }
+    const run: ScreenRun = { stream: null, video: null, onEnded: null, onMute: null, onUnmute: null, controller: new AbortController() }
     runRef.current = run
     const current = () => mountedRef.current && runRef.current === run
     setError(null)
@@ -109,6 +169,7 @@ export function useScreenStream({ preferNativeResolution = false }: ScreenStream
       if (!current()) { disposeRun(run); return }
       const track = stream.getVideoTracks()[0]
       if (!track) throw new Error('No screen video track')
+      if (track.readyState === 'ended') throw new CaptureReadinessError('The selected source ended before sharing started. Restore its window and share it again.')
       if (preferNativeResolution && 'contentHint' in track) {
         // The browser may ignore this hint. A missing implementation must not
         // turn an otherwise valid sharing grant into a failed session.
@@ -117,22 +178,35 @@ export function useScreenStream({ preferNativeResolution = false }: ScreenStream
       streamRef.current = stream
       const video = document.createElement('video')
       run.video = video
-      video.srcObject = stream
       video.muted = true
+      video.defaultMuted = true
       video.playsInline = true
-      run.onEnded = () => { if (current()) stop() }
+      video.srcObject = stream
+      run.onEnded = () => {
+        if (!current()) return
+        if (videoRef.current !== video) setError('The selected source stopped before a frame was available. Restore its window and share it again.')
+        stop()
+      }
+      run.onMute = () => { if (current()) setError(frameUnavailable(video, track)) }
+      run.onUnmute = () => { if (current()) setError(null) }
       track.addEventListener('ended', run.onEnded)
-      await video.play()
+      track.addEventListener('mute', run.onMute)
+      track.addEventListener('unmute', run.onUnmute)
+      await playFirstFrame(video, track, run.controller.signal)
       if (!current()) { disposeRun(run); return }
       videoRef.current = video
       // If the user stops sharing via the browser's own control, reflect it.
       setSharing(true)
       setStarting(false)
-      setSourceLabel(track.label || 'Shared screen')
+      setError(null)
+      setSourceLabel(track.label || `Shared ${sourceName(track)}`)
     } catch (e) {
       if (!current()) { disposeRun(run); return }
       // User cancelled the picker, or permission denied — not a hard error.
-      setError(e instanceof Error && e.name === 'NotAllowedError' ? null : 'Could not start screen sharing')
+      setError(e instanceof CaptureReadinessError ? e.message
+        : e instanceof Error && e.name === 'NotAllowedError' ? run.stream ? 'The browser could not play the shared video. Restore its window and share it again.' : null
+          : e instanceof Error && e.name === 'NotReadableError' ? 'The browser could not read the selected window or screen. Restore the window, check screen-recording permission, and share it again.'
+            : 'Could not start screen sharing. Try selecting the window again, or choose Screen in the sharing dialog.')
       stop()
     }
   }, [preferNativeResolution, stop])
@@ -141,7 +215,7 @@ export function useScreenStream({ preferNativeResolution = false }: ScreenStream
   // gate) so the caller can skip a redundant vision call, or if not sharing.
   const grabFrame = useCallback((): string | null => {
     const video = videoRef.current
-    if (!video || !video.videoWidth) return null
+    if (!video || frameUnavailable(video, streamRef.current?.getVideoTracks()[0])) return null
 
     const scale = Math.min(1, LONG_EDGE / Math.max(video.videoWidth, video.videoHeight))
     const w = Math.max(1, Math.round(video.videoWidth * scale))
@@ -192,13 +266,17 @@ export function useScreenStream({ preferNativeResolution = false }: ScreenStream
     const unavailable = (reason: string): Extract<ScreenSample, { kind: 'unavailable' }> => ({ kind: 'unavailable', capturedAt, reason })
     const video = videoRef.current
     if (!video || !streamRef.current) return unavailable('Screen sharing is stopped.')
-    if (!video.videoWidth || !video.videoHeight) return unavailable('Waiting for the shared screen.')
+    const reason = frameUnavailable(video, streamRef.current.getVideoTracks()[0])
+    if (reason) return unavailable(reason)
+    // A window can resize while shared. Use its current intrinsic dimensions,
+    // not early getSettings() metadata or a previously captured frame's size.
+    const sourceWidth = video.videoWidth, sourceHeight = video.videoHeight
     const crop = options?.crop ? normalizeRegion(options.crop) : { x: 0, y: 0, width: 1, height: 1 }
     if (!crop) return unavailable('The selected capture area is empty.')
-    const sx = Math.floor(crop.x * video.videoWidth)
-    const sy = Math.floor(crop.y * video.videoHeight)
-    const sw = Math.max(1, Math.min(video.videoWidth - sx, Math.ceil(crop.width * video.videoWidth)))
-    const sh = Math.max(1, Math.min(video.videoHeight - sy, Math.ceil(crop.height * video.videoHeight)))
+    const sx = Math.floor(crop.x * sourceWidth)
+    const sy = Math.floor(crop.y * sourceHeight)
+    const sw = Math.max(1, Math.min(sourceWidth - sx, Math.ceil(crop.width * sourceWidth)))
+    const sh = Math.max(1, Math.min(sourceHeight - sy, Math.ceil(crop.height * sourceHeight)))
 
     try {
       const size = aptitudeCaptureSize(sw, sh)
@@ -228,10 +306,10 @@ export function useScreenStream({ preferNativeResolution = false }: ScreenStream
         context.drawImage(video, sx, sy, sw, sh, 0, 0, width, height)
         context.fillStyle = '#ffffff'
         for (const region of masks) {
-          const left = Math.max(sx, region.x * video.videoWidth)
-          const top = Math.max(sy, region.y * video.videoHeight)
-          const right = Math.min(sx + sw, (region.x + region.width) * video.videoWidth)
-          const bottom = Math.min(sy + sh, (region.y + region.height) * video.videoHeight)
+          const left = Math.max(sx, region.x * sourceWidth)
+          const top = Math.max(sy, region.y * sourceHeight)
+          const right = Math.min(sx + sw, (region.x + region.width) * sourceWidth)
+          const bottom = Math.min(sy + sh, (region.y + region.height) * sourceHeight)
           if (right <= left || bottom <= top) continue
           // Round outward in each raster so masked edges are never transmitted.
           const x = Math.floor((left - sx) * width / sw)
@@ -286,7 +364,7 @@ export function useScreenStream({ preferNativeResolution = false }: ScreenStream
   // the low-resolution chat diff gate: a chat grab must not consume repo capture.
   const grabCodeFrame = useCallback((): string | null => {
     const video = videoRef.current
-    if (!video?.videoWidth || !video.videoHeight) return null
+    if (!video || frameUnavailable(video, streamRef.current?.getVideoTracks()[0])) return null
     const scale = Math.min(1, 2400 / Math.max(video.videoWidth, video.videoHeight))
     const canvas = document.createElement('canvas')
     canvas.width = Math.max(1, Math.round(video.videoWidth * scale))

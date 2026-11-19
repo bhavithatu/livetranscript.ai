@@ -223,3 +223,40 @@ now runs both the signed-out production boundary and the existing development
 preview owner, including native IndexedDB reload/export/clear. Browser fixtures
 are explicitly stubs; real provider outcomes and latency must be recorded from
 the bounded deployment regression and live UI, not inferred from these tests.
+
+
+## Window-source startup and native copy-focus follow-up
+
+The first progressive release (`f2f47c19`) passed CI Quality with 1,533 tests
+across 181 files and the 204-check offline aptitude suite. Browser CI caught a
+real native-browser focus loss: disabling a focused Copy button while awaiting
+clipboard completion removes its focus. The follow-up uses `aria-disabled`
+and a synchronous in-flight guard, preserving focus and suppressing duplicate
+activation without changing clipboard or fallback behavior. The browser focus
+assertions remain active, including before the second model response arrives.
+
+For the subsequently reported Safari window-sharing issue, the capture hook
+now requests one preferred dimension, waits for decoded current-frame data,
+rejects ended/muted/disabled sources, and uses current dimensions after a window
+resize. Startup has a cancellable ten-second deadline beginning after the user
+chooses a source. A muted window can resume the same grant when it supplies
+frames again; no automatic retry widens the capture to a full screen.
+
+These changes are supported by WebKit's guidance on intrinsic aspect ratio and
+first-frame metadata, and by the browser media readiness contract:
+
+- https://bugs.webkit.org/show_bug.cgi?id=250200
+- https://bugs.webkit.org/show_bug.cgi?id=281737
+- https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/readyState
+- https://developer.mozilla.org/en-US/docs/Web/API/MediaStreamTrack/muted
+
+Thirty-nine focused capture/detector tests passed, covering delayed and stalled
+startup, cancellation, source ending, mute/unmute recovery, resizing, native
+pixel detail, crops and masks. The user's Safari session was not accessible
+through the connected Linux/Chromium computer. Historical WebKit reports support
+compatibility hardening, not a claim that this specific Safari failure was
+reproduced or its root cause conclusively diagnosed.
+
+The integrated follow-up suite passed **1,540 tests across 181 files** locally.
+TypeScript, edited-file ESLint and diff checks passed. Exact-head CI and the
+normal eight-call production gate still run on publication.

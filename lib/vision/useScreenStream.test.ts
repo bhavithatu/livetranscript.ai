@@ -15,8 +15,12 @@ class Track extends EventTarget {
   readyState = 'live'
   label = 'Practice question tab'
   contentHint = ''
+  muted = false
+  enabled = true
+  getSettings = vi.fn((): MediaTrackSettings => ({ displaySurface: 'browser' }))
   stop = vi.fn(() => { this.readyState = 'ended' })
   end() { this.readyState = 'ended'; this.dispatchEvent(new Event('ended')) }
+  setMuted(muted: boolean) { this.muted = muted; this.dispatchEvent(new Event(muted ? 'mute' : 'unmute')) }
 }
 
 function stream(track: Track) {
@@ -25,6 +29,7 @@ function stream(track: Track) {
 
 type Raster = { width: number; height: number; pixels: Uint8ClampedArray }
 let videoRaster: Raster
+let videoReadyState: number
 let canvases: WeakMap<HTMLCanvasElement, Raster>
 let encoded: Raster[]
 const getDisplayMedia = vi.fn()
@@ -84,17 +89,19 @@ beforeEach(() => {
   vi.clearAllMocks()
   canvases = new WeakMap()
   encoded = []
+  videoReadyState = HTMLMediaElement.HAVE_CURRENT_DATA
   videoRaster = { width: 64, height: 32, pixels: new Uint8ClampedArray(64 * 32 * 4) }
   for (let y = 0; y < videoRaster.height; y++) for (let x = 0; x < videoRaster.width; x++) paint(videoRaster, x, y, x % 8 < 4 ? 30 : 240)
   vi.stubGlobal('navigator', { mediaDevices: { getDisplayMedia } })
   getDisplayMedia.mockResolvedValue(stream(new Track()))
   vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined)
+  vi.spyOn(HTMLMediaElement.prototype, 'readyState', 'get').mockImplementation(() => videoReadyState)
   vi.spyOn(HTMLVideoElement.prototype, 'videoWidth', 'get').mockImplementation(() => videoRaster.width)
   vi.spyOn(HTMLVideoElement.prototype, 'videoHeight', 'get').mockImplementation(() => videoRaster.height)
   installCanvas()
 })
 
-afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('screen media ownership', () => {
   it('requests source detail only for the Aptitude workflow while keeping other vision consumers unchanged', async () => {
@@ -111,11 +118,89 @@ describe('screen media ownership', () => {
     const detailed = renderHook(() => useScreenStream({ preferNativeResolution: true }))
     await act(async () => detailed.result.current.start())
     expect(getDisplayMedia).toHaveBeenLastCalledWith({ video: {
-      width: { ideal: 4096 }, height: { ideal: 4096 },
+      width: { ideal: 4096 },
       frameRate: { ideal: 5, max: 10 }, resizeMode: { ideal: 'none' },
     }, audio: false })
     expect(detailedTrack.contentHint).toBe('text')
     expect(detailed.result.current.sharing).toBe(true)
+  })
+
+  it('waits for decoded window data instead of treating early dimensions or play completion as a capture', async () => {
+    const track = new Track()
+    track.label = ''
+    // WebKit can initially report fallback settings that differ from the video.
+    track.getSettings.mockReturnValue({ displaySurface: 'window', width: 640, height: 480 })
+    getDisplayMedia.mockResolvedValue(stream(track))
+    videoReadyState = HTMLMediaElement.HAVE_METADATA
+    const { result } = renderHook(() => useScreenStream({ preferNativeResolution: true }))
+    let pending!: Promise<void>
+    await act(async () => { pending = result.current.start(); await Promise.resolve() })
+    expect(result.current.starting).toBe(true)
+    expect(result.current.sharing).toBe(false)
+    expect(result.current.sampleFrame().kind).toBe('unavailable')
+    expect(encoded).toHaveLength(0)
+    const video = vi.mocked(HTMLMediaElement.prototype.play).mock.contexts[0] as HTMLVideoElement
+    await act(async () => {
+      videoReadyState = HTMLMediaElement.HAVE_CURRENT_DATA
+      video.dispatchEvent(new Event('loadeddata'))
+      await pending
+    })
+    expect(result.current.sharing).toBe(true)
+    expect(result.current.sourceLabel).toBe('Shared window')
+    const sample = result.current.sampleFrame()
+    expect(sample).toMatchObject({ kind: 'available', width: 64, height: 32 })
+    expect(encoded[0].width / encoded[0].height).toBe(2)
+    expect(getDisplayMedia).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows a recoverable error and releases a window that never provides a first frame', async () => {
+    vi.useFakeTimers()
+    const track = new Track()
+    track.getSettings.mockReturnValue({ displaySurface: 'window' })
+    getDisplayMedia.mockResolvedValue(stream(track))
+    // A stalled play promise must not leave the Share button starting forever.
+    vi.mocked(HTMLMediaElement.prototype.play).mockReturnValue(new Promise(() => {}))
+    const { result } = renderHook(() => useScreenStream({ preferNativeResolution: true }))
+    let pending!: Promise<void>
+    await act(async () => { pending = result.current.start(); await Promise.resolve() })
+    await act(async () => { vi.advanceTimersByTime(10_000); await pending })
+    expect(result.current).toMatchObject({ sharing: false, starting: false, sourceLabel: null })
+    expect(result.current.error).toMatch(/window did not provide a readable frame.*Restore the window/)
+    expect(track.stop).toHaveBeenCalledOnce()
+    expect(encoded).toHaveLength(0)
+    expect(getDisplayMedia).toHaveBeenCalledOnce()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('cancels stalled video startup immediately without allowing late media events to restart it', async () => {
+    vi.useFakeTimers()
+    const track = new Track()
+    getDisplayMedia.mockResolvedValue(stream(track))
+    const playing = deferred<void>()
+    vi.mocked(HTMLMediaElement.prototype.play).mockReturnValue(playing.promise)
+    const { result } = renderHook(() => useScreenStream())
+    let pending!: Promise<void>
+    await act(async () => { pending = result.current.start(); await Promise.resolve() })
+    const video = vi.mocked(HTMLMediaElement.prototype.play).mock.contexts[0] as HTMLVideoElement
+    await act(async () => { result.current.stop(); await pending })
+    expect(track.stop).toHaveBeenCalledOnce()
+    expect(vi.getTimerCount()).toBe(0)
+    await act(async () => { playing.resolve(); video.dispatchEvent(new Event('loadeddata')); track.setMuted(false) })
+    expect(result.current.sharing).toBe(false)
+    expect(result.current.error).toBeNull()
+  })
+
+  it('reports a source ending during startup instead of leaving an empty active share', async () => {
+    const track = new Track()
+    getDisplayMedia.mockResolvedValue(stream(track))
+    videoReadyState = HTMLMediaElement.HAVE_METADATA
+    const { result } = renderHook(() => useScreenStream())
+    let pending!: Promise<void>
+    await act(async () => { pending = result.current.start(); await Promise.resolve() })
+    await act(async () => { track.end(); await pending })
+    expect(result.current.sharing).toBe(false)
+    expect(result.current.error).toMatch(/stopped before a frame/)
+    expect(track.stop).toHaveBeenCalledOnce()
   })
 
   it('opens one picker and retires a permission grant that arrives after Stop', async () => {
@@ -203,6 +288,46 @@ describe('screen media ownership', () => {
 })
 
 describe('independent aptitude screen samples', () => {
+  it('refuses frozen or black window samples while the track is muted, then resumes without another picker', async () => {
+    const track = new Track()
+    track.getSettings.mockReturnValue({ displaySurface: 'window' })
+    getDisplayMedia.mockResolvedValue(stream(track))
+    const { result } = renderHook(() => useScreenStream({ preferNativeResolution: true }))
+    await act(async () => result.current.start())
+    expect(result.current.sampleFrame().kind).toBe('available')
+    const count = encoded.length
+    act(() => track.setMuted(true))
+    expect(result.current.sharing).toBe(true)
+    expect(result.current.error).toMatch(/shared window is not providing frames/)
+    expect(result.current.sampleFingerprint()).toMatchObject({ kind: 'unavailable', reason: expect.stringMatching(/Restore the window/) })
+    expect(result.current.sampleFrame().kind).toBe('unavailable')
+    expect(result.current.grabFrame()).toBeNull()
+    expect(result.current.grabCodeFrame()).toBeNull()
+    expect(encoded).toHaveLength(count)
+    act(() => track.setMuted(false))
+    expect(result.current.error).toBeNull()
+    expect(result.current.sampleFrame().kind).toBe('available')
+    expect(getDisplayMedia).toHaveBeenCalledOnce()
+    // Loss of decoded data after a resize is also not a readable current frame.
+    videoReadyState = HTMLMediaElement.HAVE_METADATA
+    expect(result.current.sampleFrame()).toMatchObject({ kind: 'unavailable', reason: expect.stringMatching(/Waiting for a readable frame/) })
+  })
+
+  it('uses a shared window’s new intrinsic size and aspect ratio after resizing', async () => {
+    const track = new Track()
+    track.getSettings.mockReturnValue({ displaySurface: 'window', width: 640, height: 480 })
+    getDisplayMedia.mockResolvedValue(stream(track))
+    const { result } = renderHook(() => useScreenStream({ preferNativeResolution: true }))
+    await act(async () => result.current.start())
+    expect(result.current.sampleFrame()).toMatchObject({ kind: 'available', width: 64, height: 32 })
+    videoRaster = { width: 32, height: 64, pixels: new Uint8ClampedArray(32 * 64 * 4).fill(255) }
+    paint(videoRaster, 16, 32, 20)
+    const resized = result.current.sampleFrame({ crop: { x: 0.5, y: 0, width: 0.5, height: 1 } })
+    expect(resized).toMatchObject({ kind: 'available', width: 16, height: 64 })
+    expect(encoded.at(-1)?.pixels[32 * 16 * 4]).toBe(20)
+    expect(getDisplayMedia).toHaveBeenCalledOnce()
+  })
+
   it('polls a bounded fingerprint without allocating or encoding the full image', async () => {
     videoRaster = { width: 3000, height: 60, pixels: new Uint8ClampedArray(3000 * 60 * 4).fill(255) }
     for (let y = 0; y < 60; y++) for (let x = 1000; x < 1100; x++) paint(videoRaster, x, y, 20)

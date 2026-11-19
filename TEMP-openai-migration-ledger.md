@@ -22,8 +22,13 @@ connection, and no server screenshot/answer archive exists for that old run.
 Its accuracy cannot be inferred from the synthetic pilot. The new two-model
 regression is explicitly capped at 24 calls on the existing authored fixtures;
 the independent existing release gate remains eight calls. This current
-follow-up's exact-commit deployment evidence is pending, not implied by the
-historical records below.
+follow-up deployed at `f2f47c19d2551886b84355470b83260f5e5593ca`: the 24-call
+regression completed with no operational errors, Sol 10/10 objective and Claude
+8/10 objective, both 2/2 boundaries. Claude's two real errors were withheld by
+arithmetic verification despite confidence 97/99. The separate eight-call
+release gate passed. A Cloud Chromium practice check showed the first answer
+at 4.591 s and both at 7.048 s, with a validated session export. These observations
+do not establish Safari-device verification or accuracy on the user's run.
 
 ## Initial migration record
 

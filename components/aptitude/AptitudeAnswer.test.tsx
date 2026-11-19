@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { parseAptitudeResult, type AptitudeResult } from '@/lib/aptitude/schema'
 import type { AptitudeSessionEntry } from '@/lib/aptitude/useAptitudeSession'
@@ -161,6 +161,28 @@ describe('model comparison results', () => {
     expect(screen.getByRole('button', { name: 'OpenAI answer copied' })).toBe(button)
     expect(document.activeElement).toBe(button)
     expect(screen.getByRole('button', { name: 'Copy Claude answer' })).toBeTruthy()
+  })
+
+  it('keeps copy focus while the clipboard write is pending and rejects duplicate activation', async () => {
+    let finishWrite!: () => void
+    const writeText = vi.fn(() => new Promise<void>(resolve => { finishWrite = resolve }))
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    render(<AptitudeAnswer entry={entry(comparisonFixture(base))} index={0} {...actions} />)
+    const button = screen.getByRole('button', { name: 'Copy Claude answer' }) as HTMLButtonElement
+    button.focus()
+    fireEvent.click(button)
+    expect(button.disabled).toBe(false)
+    expect(button.getAttribute('aria-disabled')).toBe('true')
+    expect(document.activeElement).toBe(button)
+    fireEvent.click(button)
+    expect(writeText).toHaveBeenCalledTimes(1)
+    await act(async () => { finishWrite() })
+    expect(screen.getByRole('button', { name: 'Claude answer copied' })).toBe(button)
+    expect(button.getAttribute('aria-disabled')).toBe('false')
+    expect(document.activeElement).toBe(button)
+    fireEvent.click(button)
+    expect(writeText).toHaveBeenCalledTimes(2)
+    await act(async () => { finishWrite() })
   })
 
   it.each(['needs_capture', 'ambiguous', 'unsupported'] as const)('does not show confidence or copying when a model returns %s', (status) => {

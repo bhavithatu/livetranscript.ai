@@ -21,6 +21,37 @@ local verification, allowing a model error to be distinguished from a local
 check that suppresses an answer. It never records provider thinking blocks or
 the user's Safari questions. The historical pilot below is unchanged.
 
+### Completed Claude/OpenAI regression
+
+Commit `f2f47c19d2551886b84355470b83260f5e5593ca` completed all 24 calls on
+Vercel deployment `dpl_6sMr14knPctoAPnJa4AxvTqukcaA`, with zero provider,
+schema or source-image errors. [Full structured regression record](aptitude-claude-openai-regression-2026-11-18.json).
+
+| Model | Clear questions correct | Boundaries correct | Incorrect proposals withheld |
+| --- | ---: | ---: | ---: |
+| Claude Sonnet 5.5 high | 8/10 | 2/2 | 2 |
+| GPT-6.2 Sol high | 10/10 | 2/2 | 0 |
+
+Claude's two withheld responses were actual errors, not checker false positives.
+It selected 18.60 for a weighted average whose expression evaluates to 17.40
+(confidence 99), and selected 21 when its own shape-value calculation yielded
+22 (confidence 97). This is direct evidence that self-reported confidence is
+not a calibrated probability. The arithmetic checks remain active.
+
+Pairing the single-model runs for the ten clear questions gives a 5.38 s median
+to the first usable answer and 7.11 s median until both finish; a usable answer
+arrived earlier on eight of ten fixtures. These are server-side paired timings,
+not measurements of the user's Safari workflow. In a separate live Cloud
+Chromium check, the original percentage-increase practice question showed its
+first answer at 4.591 s and both at 7.048 s. Both selected B, 25%; session export
+contained the exact screenshot, both candidates, estimates and timings.
+
+The separate eight-call release gate passed all six objective candidates and
+both incomplete-capture boundaries, with no evidence flags or provider errors.
+It withheld three combined selections because descriptions did not reconcile;
+individual completed answers remained visible. This regression does not grade
+the inaccessible forty-question Safari session or establish general accuracy.
+
 Review date: **November 18, 2026**.
 
 This record separates published benchmark evidence from this application's
