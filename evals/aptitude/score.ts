@@ -1,6 +1,7 @@
 import { parseAptitudeObservation, parseAptitudeResult, type AptitudeResult } from '@/lib/aptitude/schema'
 import type { AptitudeFixture } from './fixtures'
 import { calculateExpression } from '@/lib/aptitude/calculator'
+import { hasCorrectRotationGridInventory } from './gridEvidence'
 
 export type AptitudeEvidenceReview = {
   checks: { id: string; description: string; passed: boolean }[]
@@ -34,6 +35,7 @@ function reviewEvidence(fixture: AptitudeFixture, result: Pick<AptitudeResult, '
   const checks = (fixture.expected.evidenceChecks ?? []).map(check => ({
     id: check.id, description: check.description,
     passed: check.allPatterns.every(pattern => new RegExp(pattern, 'iu').test(evidence))
+      && (!check.gridRotationInventory || hasCorrectRotationGridInventory(result.answer?.evidence ?? [], evidence))
       && !(check.forbiddenPatterns ?? []).some(pattern => new RegExp(pattern, 'iu').test(evidence)),
   }))
   let calculationMatchesExpected: boolean | null = null
