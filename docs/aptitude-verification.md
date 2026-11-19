@@ -412,3 +412,13 @@ Interactive design: `/assessment-preview/index.html`; full app:
 `/copilot?mode=aptitude`. The design uses explicitly labeled saved or authored
 examples and does not make model calls. See the model-selection document for
 fresh response results and their limitations.
+
+### Arithmetic correction final checks
+
+The final complete suite passes 1,626 tests across 187 files (106.94 seconds,
+two workers). TypeScript and focused lint pass. The correction also passed 92
+targeted arithmetic, pattern, comparison, guidance and analysis tests plus an
+independent review. Offline re-verification recovers exactly one valid chart
+answer without relaxing numeric choice checks. The final preview build
+explicitly disables additional paid checks: it reuses the original 30-call
+evidence and separate local correction replay. Production remains unchanged.

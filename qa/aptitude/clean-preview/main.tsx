@@ -21,7 +21,7 @@ function Preview() {
     <header className="topbar">
       <a className="brand" href="#"><span className="brandIcon"><Layers size={20}/></span>LiveTranscript<span className="brandDivider">/</span><span className="brandSection">Practice</span></a>
       <span className="previewTag">Design preview</span>
-      <a className="workspaceLink" href="https://livetranscript.ai/copilot?mode=aptitude" target="_blank" rel="noreferrer">Open live workspace <ArrowUpRight size={15}/></a>
+      <a className="workspaceLink" href="/copilot?mode=aptitude" target="_blank" rel="noreferrer">Open updated workspace <ArrowUpRight size={15}/></a>
     </header>
     <main>
       <div className="pageHeading"><div><span className="eyebrow">TWO SECTIONS. ONE CLEAR WORKSPACE.</span><h1>{behavioral ? 'Understand the question.' : 'Focus on the answer.'}</h1><p>{behavioral ? 'Plain-language explanations to help you respond honestly.' : 'The best available answer, with confidence and difficulty at a glance.'}</p></div></div>

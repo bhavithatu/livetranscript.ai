@@ -366,3 +366,21 @@ scale choices. The original automated result was 5/6 because its scorer omitted
 the tentative word “possibly.” A regression-tested scoring correction produces
 6/6 offline, with the original report retained. Neither a universally correct
 personality answer nor an employer scoring key is claimed.
+
+### Corrected arithmetic verification
+
+Offline re-verification of the same 24 saved provider responses identified one
+checker false rejection: Claude correctly chose Aspen while serializing 100/3
+as `33.3333333333`. The verifier now allows tiny decimal representation
+truncation only in an unrounded calculation claim. Actual numeric answers and
+options still require strict agreement; large integers require exact equality,
+and the exact rational range is checked before conversion.
+
+Exactly one response changes from withheld to solved. Claude's checked objective
+count becomes 8/10; OpenAI remains 10/10. The weighted-average and shape-count
+Claude errors remain withheld. Recommendations remain 10/10 correct, 9/10 with
+acceptable evidence, and both boundaries preserve no answer. The chart
+recommendation's source disagreement now caps its confidence at 45 rather than
+the previous single-candidate 70. No provider calls were rerun; original records
+remain unchanged. The final correction is preview commit
+`0b2e2be20103de1f24900aae1c87fc4ca8696f7d`.
