@@ -108,6 +108,20 @@ describe('quarter-turn grid literal inventory rubric', () => {
     expect(review(wrongChoice)?.reviewRequired).toBe(true)
   })
 
+  it.each(['has', 'contains', 'with'])('accepts %s with a filled qualifier inherited only within a row or choice list', verb => {
+    const evidence = explicitInventory.map(item => item.replaceAll(' filled cells ', ` ${verb} `).replace(` ${verb} `, ` ${verb} filled cells `))
+    expect(review(result(evidence))?.reviewRequired).toBe(false)
+    const missingQualifier = [...evidence]
+    missingQualifier[1] = missingQualifier[1].replace('filled cells ', '')
+    expect(review(result(missingQualifier))?.reviewRequired).toBe(true)
+    const contradictedQualifier = [...evidence]
+    contradictedQualifier[0] = contradictedQualifier[0].replace(`r1c2 ${verb} r1c2`, `r1c2 ${verb} empty cells r1c2`)
+    expect(review(result(contradictedQualifier))?.reviewRequired).toBe(true)
+    const wrongCell = [...evidence]
+    wrongCell[0] = wrongCell[0].replace(`r1c2 ${verb} r1c2, r1c3, r2c2`, `r1c2 ${verb} r1c2, r1c3, r3c2`)
+    expect(review(result(wrongCell))?.reviewRequired).toBe(true)
+  })
+
   it('derives the rotation from a complete correct inventory and still rejects the conflicting growth rule', () => {
     const missingRule = result()
     missingRule.answer!.workedExplanation = ['The missing panel matches option D.']
@@ -115,6 +129,13 @@ describe('quarter-turn grid literal inventory rubric', () => {
     const conflictingRule = result()
     conflictingRule.answer!.workedExplanation.push('Each panel adds one square.')
     expect(review(conflictingRule)?.reviewRequired).toBe(true)
+  })
+
+  it('does not inherit a choice qualifier across an intervening source-panel marker', () => {
+    const evidence = [...explicitInventory]
+    evidence[2] = evidence[2].replace('; r3c3 shows a question mark.', '.')
+    evidence[3] = evidence[3].replace('; B filled cells', '; r3c3 is the missing panel; B')
+    expect(review(result(evidence))?.reviewRequired).toBe(true)
   })
 
   it('preserves the existing verbal count check when no cell inventory is provided', () => {
