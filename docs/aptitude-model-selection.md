@@ -1,0 +1,207 @@
+# Aptitude model selection and benchmark evidence
+
+Review date: **November 18, 2026**.
+
+This record separates published benchmark evidence from this application's
+original practice fixtures. Published results identify candidates to evaluate;
+they do not measure this application's screenshot capture, answer mapping, or
+time limit. The live migration pilot below is pending until its report is
+attached. No general aptitude-accuracy claim follows from this document.
+
+## Candidate decision
+
+Evaluate the following three models on the same twelve frozen, original
+questions, with a maximum of **36 provider calls**:
+
+| Model | Effort | Role in the pilot |
+| --- | --- | --- |
+| GPT-6.2 Astra | high | Strong visual-reasoning challenger, also supported by independent MMMU-Pro and ARC results |
+| GPT-6.2 Sol | high | Near-tied visual-reasoning challenger with lower reported benchmark latency |
+| Claude Sonnet 5.5 | high | Existing production baseline for a direct migration comparison |
+
+This is a shortlist, not a claim that all three are the best models for every
+question type. Choose the production configuration using measured correctness,
+evidence quality, abstention behavior, and deadline success on the frozen pilot.
+The two OpenAI candidates must not be assumed to make independent mistakes.
+
+Claude Fable 5.2 is a strong later candidate. Its
+[official model overview](https://platform.claude.com/docs/en/models/fable-5-2/overview)
+documents image input and always-on adaptive thinking. The
+[migration guide](https://platform.claude.com/docs/en/models/fable-5-2/migration-guide)
+states that Fable needs no access approval, but requires 30-day retention;
+zero-retention workspaces need express authorization. Structured outputs are
+unavailable for this model in organizations using customer-managed encryption
+keys. The present pilot does not change retention settings or enable Fable.
+Published capability does not establish this account's usable access.
+
+## Published benchmark comparisons
+
+### Roboflow Visual Reasoning
+
+[Roboflow's task leaderboard](https://playground.roboflow.com/evals/visual-reasoning),
+updated November 17, 2026, tests visual arithmetic, comparison, spatial relations,
+deduction, and inference. Its examples include schedules and technical drawings;
+it is not a dedicated employment-aptitude test. All rows below use **high** effort.
+
+| Model | LLM-judged accuracy | Strict match | Inference time per sample |
+| --- | --- | --- | --- |
+| GPT-6.2 Sol | 93.6% | 90.3% | 6.41 s |
+| GPT-6.2 Astra | 93.4% | 92.9% | 7.94 s |
+| Gemini 4 Carbon | 92.3% | 92.3% | 52.28 s |
+| Claude Fable 5.2 | 92.0% | 92.0% | 8.48 s |
+| Claude Opus 5.5 | 85.9% | 85.9% | 9.12 s |
+| Claude Sonnet 5.5 | 83.9% | 72.8% | 7.47 s |
+| GPT-6 Sol | 77.7% | 77.3% | 7.37 s |
+
+Sol's three-run accuracy range is 92.7–94.7%; Astra's is 92.7–94.0%.
+Their 0.2-point difference does not establish a reliable winner.
+
+The separate [methodology](https://playground.roboflow.com/evals) explains the
+limits of these figures:
+
+- Models receive the same samples; the current protocol averages three runs per
+  effort tier. The displayed ± is half the min–max range, **not a confidence
+  interval**.
+- Gemini 3.5 Flash at temperature zero judges answers against the key. Strict
+  match requires an exact normalized answer and penalizes added explanation.
+  The strict/judge gap is largely an output-format issue; it is not an independent
+  demonstration of better reasoning.
+- Effort tiers map to different native provider settings. Inference time is not
+  browser capture-to-answer time or a service-level guarantee.
+- The inspected public pages did not disclose a named dataset or question count.
+  The displayed model/configuration counts must not be presented as sample size.
+
+Our structured response schema, image preprocessing, token cap, and deadline
+differ from this benchmark, so its scores are candidate-selection evidence only.
+
+### MMMU-Pro
+
+[Artificial Analysis independently evaluates MMMU-Pro](https://artificialanalysis.ai/evaluations/mmmu-pro).
+Its current page displays these **rounded** leading values:
+
+| Model setting | Displayed score |
+| --- | --- |
+| GPT-6.2 Astra, max | 89% |
+| Gemini 4 Carbon, medium | 89% |
+| Gemini 4 Argon, medium | 88% |
+
+The benchmark spans thirty academic disciplines. Its family includes a
+vision-only format with question text embedded in an image, alongside other
+formats. The cited evaluator's
+[methodology](https://artificialanalysis.ai/methodology/intelligence-benchmarking)
+specifies 1,730 questions, ten choices, one attempt, regex answer extraction,
+and no tools. It does not explicitly identify that run as the vision-only
+configuration. Do not describe this leaderboard as a direct test of this app's
+screenshots, or give its rounded numbers invented decimal precision.
+
+Astra's **max** result is not a measured result for our **high** profile. The
+evaluation's token allowances and application deadline also differ. MMMU-Pro
+supports the shortlist but cannot determine the production winner by itself.
+
+### ARC-AGI: related abstract reasoning
+
+ARC Prize's verified model pages report the following ARC-AGI-2 results:
+
+| Model | Effort | ARC-AGI-2 score | Primary source |
+| --- | --- | --- | --- |
+| GPT-6.2 Astra | high | 94.6% | [ARC Prize](https://arcprize.org/results/openai-gpt-6-2-astra) |
+| GPT-6.2 Astra | max | 95.8% | [ARC Prize](https://arcprize.org/results/openai-gpt-6-2-astra) |
+| Claude Opus 5.5 | high | 93.3% | [ARC Prize](https://arcprize.org/results/anthropic-claude-opus-5-5) |
+| Claude Sonnet 5.5 | high | 67.4% | [ARC Prize](https://arcprize.org/results/anthropic-claude-sonnet-5-5) |
+
+ARC measures grid-rule abstraction under its own evaluation protocol. These
+figures are related reasoning evidence, **not screenshot aptitude accuracy**.
+They do not verify OCR, small diagram perception, option coordinates, or response
+time in this application. Family-level GPT results must not be assigned to Sol
+when the reported model is Astra. Scores from different effort settings are not
+interchangeable.
+
+## Question sources and answer-key access
+
+The following primary sources are useful for a larger future evaluation. None
+was run in full as part of the twelve-question migration pilot.
+
+| Source | Relevant coverage and data | Answer-key access and limits |
+| --- | --- | --- |
+| [RAVEN original paper](https://openaccess.thecvf.com/content_CVPR_2019/papers/Zhang_RAVEN_A_Dataset_for_Relational_and_Analogical_Visual_REasoNing_CVPR_2019_paper.pdf) | 70,000 matrix problems across seven figure configurations, with structural and rule annotations. Simple grayscale figures emphasize relational reasoning. | The [author project](https://wellyzhang.github.io/project/raven.html) links downloads, and the [official repository](https://github.com/WellyZhang/RAVEN) provides a generator and benchmark code. Downloaded answer files were not inspected or validated in this review. Confirm split, labels, and permitted reuse before importing; the 2019 paper is not a current frontier-model ranking. |
+| [MM-IQ project](https://acechq.github.io/MMIQ-benchmark/) | 2,710 items across eight reasoning paradigms, including logic, 2D/3D geometry, spatial relations, and counting. | The [author dataset](https://huggingface.co/datasets/huanqia/MM-IQ) exposes an `answer` column in its public test split. Its public leaderboard includes historical results such as o3 33.17%, Sonnet 3.7 Thinking 31.55%, and Gemini 2.5 Pro 31.23%; these are not results for the current candidates. |
+| [MathVista project](https://mathvista.github.io/) | 6,141 examples from 31 datasets, including IQTest, FunctionQA, and PaperQA; arithmetic, geometry, charts, and logical reasoning. | The project documents a 1,000-example public development/validation subset, `testmini`, and a 5,141-example `test` split whose answer labels are withheld. A local keyed evaluation should use documented public labels; do not claim to have independently scored the private-key split. |
+| [MathVision project](https://mathllm.github.io/mathvision/) | 3,040 competition mathematics questions across sixteen disciplines and five difficulty levels, with visual context. | The [author dataset](https://huggingface.co/datasets/MathLLMs/MathVision) exposes answer labels, but displayed `solution` fields can be null: an answer key is not necessarily a worked explanation. Its leaderboard includes both Python-assisted and no-tool runs; those protocols must remain separate. |
+
+No comparable current RAVEN, MM-IQ, MathVista, or MathVision result was verified
+for all three shortlisted models. This absence is an evidence gap, not a zero
+score. The data sources above are options for a later controlled study, not
+grounds for a universal model ranking.
+
+Public examples can be familiar to a model or prompt author. Preserve an
+untouched evaluation split and disclose any development use. Check each
+dataset's own license and provenance before copying or redistributing images.
+This work uses original practice questions and public research documentation;
+it does not scrape live assessment pages or obtain private assessment keys.
+
+## Frozen twelve-question migration pilot
+
+The pilot uses **twelve newly authored practice screenshots**, each with an
+expected answer or an explicit expected abstention. They are original app
+fixtures, not a sample claimed to reproduce any benchmark above. Their rendered
+images, answer keys, and scoring rules must be reviewed and frozen before live
+inference. Models receive only the image and production prompt, never the key.
+Fixture IDs and image hashes identify exactly what was evaluated.
+
+Run Astra high, Sol high, and the Sonnet high baseline once per image, using the
+same production schema and provider path. This permits at most 12 × 3 = 36
+calls, with no retries or fallback expansion. Keep the 6,000-output-token cap
+and the server's 25-second deadline explicit in the report. A timeout, refusal,
+invalid response, or missing result remains in the denominator.
+
+The frozen set contains ten answerable questions: inverse percentage, weighted
+average, relative chart growth, passage scope, a necessary assumption, ordering,
+multiple-select quantifiers, reflection followed by rotation, a grid combination,
+and visual counting with two equations. Two further cases require abstention:
+explicitly underdetermined operations and cropped spatial choices. It does not
+cover every supported category or difficulty, such as literal character checking.
+All twelve rendered images and their independent keys were reviewed before the
+first provider call. The fixture-definition hash is
+`243ac6d0d3f091493fdbf9045b597657660b7f497ede989ab42d6e99f40c9c7f`.
+
+Record distinct outcomes:
+
+1. **Answer correctness:** exact option/value against the authored key on
+   answerable questions, including units and multiple-choice cardinality.
+2. **Visual evidence:** whether the stem, numeric values, options, and relevant
+   diagram cells/counts match what the fixture actually shows.
+3. **Abstention behavior:** correct rejection of incomplete/ambiguous images,
+   false abstentions on complete questions, and unsupported guesses.
+4. **Contract and timing:** schema validity, provider failure, deadline success,
+   measured latency, and actual model/effort identity.
+5. **Comparison behavior:** this pilot deliberately tests individual models.
+   Comparison selection is not evaluated by these 36 calls; the separate
+   existing release check records combined selections and abstentions.
+
+An arithmetic check only verifies the stated calculation. Matching model answers
+do not establish that the screenshot was read correctly. A candidate that
+abstains on every question must not receive a misleading perfect score.
+
+Report raw counts with denominators and per-question outcomes. Twelve questions
+can reveal regressions and inform a migration; they cannot establish broad
+assessment accuracy or a stable P95 latency estimate. Repeated renderings of the
+same underlying question are related cases, not independent evidence. A larger
+untouched set is needed before making a general accuracy claim.
+
+## Live pilot outcome
+
+**Pending. No live results are claimed in this section.**
+
+Fill this section only after the actual provider run, retaining failed and
+aborted attempts. The completed record must link the report and frozen manifest,
+identify the code/prompt revision and exact model settings, list attempted calls,
+show answerable-question correctness separately from expected abstentions, and
+report observed timing and material errors. Record the resulting configuration
+decision separately from deployment verification. A passing offline scorer or
+mocked browser test must not be entered as live model evidence.
+
+Related implementation records:
+[Aptitude mode](aptitude-mode.md),
+[verification](aptitude-verification.md),
+[prompting](aptitude-prompting.md), and
+[evaluation procedure](../evals/aptitude/README.md).

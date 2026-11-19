@@ -56,19 +56,19 @@ describe('actual multimodal SDK payload contracts', () => {
     expect(sdk.anthropic.mock.calls[0][1]).toEqual({ signal })
     expect(result).toEqual({ text, model: 'claude-sonnet-5-5', inputTokens: 2100, outputTokens: 1800 })
   })
-  it('uses GPT6 Sol high effort while retaining the same image and strict output contract', async () => {
-    sdk.openai.mockResolvedValue({ model: 'gpt-6-sol', choices: [{ finish_reason: 'stop', message: { content: JSON.stringify(solvedObservation()), refusal: null } }], usage: { prompt_tokens: 2200, completion_tokens: 1900 } })
+  it.each(['gpt-6-sol', 'gpt-6.2-astra', 'gpt-6.2-sol'])('uses %s high effort while retaining the same image and strict output contract', async (model) => {
+    sdk.openai.mockResolvedValue({ model, choices: [{ finish_reason: 'stop', message: { content: JSON.stringify(solvedObservation()), refusal: null } }], usage: { prompt_tokens: 2200, completion_tokens: 1900 } })
     const signal = new AbortController().signal
-    const result = await defaultAptitudeTransport({ candidate: aptitudeModel('openai:gpt-6-sol'), request: TEST_REQUEST, signal, env: { OPENAI_API_KEY: 'not-a-real-key' } })
+    const result = await defaultAptitudeTransport({ candidate: aptitudeModel(`openai:${model}`), request: TEST_REQUEST, signal, env: { OPENAI_API_KEY: 'not-a-real-key' } })
     expect(sdk.openai).toHaveBeenCalledOnce()
     expect(sdk.openaiOptions).toHaveBeenCalledWith(expect.objectContaining({ maxRetries: 0, timeout: 25_000 }))
     const payload = sdk.openai.mock.calls[0][0]
-    expect(payload).toMatchObject({ model: 'gpt-6-sol', max_completion_tokens: 6000, reasoning_effort: 'high',
+    expect(payload).toMatchObject({ model, max_completion_tokens: 6000, reasoning_effort: 'high',
       response_format: { type: 'json_schema', json_schema: { strict: true, schema: APTITUDE_OBSERVATION_JSON_SCHEMA } } })
     for (const key of ['temperature', 'top_p', 'top_k']) expect(payload).not.toHaveProperty(key)
     expect(payload.messages[1].content).toContainEqual({ type: 'image_url', image_url: { url: TEST_IMAGE, detail: 'high' } })
     expect(sdk.openai.mock.calls[0][1]).toEqual({ signal })
-    expect(result).toMatchObject({ model: 'gpt-6-sol', inputTokens: 2200, outputTokens: 1900 })
+    expect(result).toMatchObject({ model, inputTokens: 2200, outputTokens: 1900 })
   })
   it('rejects challenger truncation even when a plausible final JSON block is present', async () => {
     sdk.anthropic.mockResolvedValue({ model: 'claude-sonnet-5-5', stop_reason: 'max_tokens',

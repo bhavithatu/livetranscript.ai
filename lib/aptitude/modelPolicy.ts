@@ -9,6 +9,9 @@ const legacyGeneration: AptitudeGenerationSettings = { maxOutputTokens: 3_000, t
 // https://platform.claude.com/docs/en/models/sonnet-5-5/migration-guide
 // GPT6 Sol supports image input, strict outputs and reasoning_effort in Chat Completions:
 // https://developers.openai.com/api/docs/models/gpt-6-sol
+// GPT6.2 Astra/Sol retain this contract and omit unsupported sampling parameters:
+// https://developers.openai.com/api/docs/models/gpt-6.2-astra
+// https://developers.openai.com/api/docs/models/gpt-6.2-sol
 const reasoningGeneration: AptitudeGenerationSettings = { maxOutputTokens: 6_000, reasoningEffort: 'high' }
 
 /** Explicit capability allowlist, not a benchmark ranking. See evals/aptitude/README.md. */
@@ -19,6 +22,8 @@ export const APTITUDE_MODELS: readonly AptitudeModel[] = [
   { id: 'openai:gpt-4.1-mini', provider: 'openai', model: 'gpt-4.1-mini', imageInput: true, structuredOutput: true, generation: legacyGeneration },
   { id: 'anthropic:claude-sonnet-5-5', provider: 'anthropic', model: 'claude-sonnet-5-5', imageInput: true, structuredOutput: true, generation: reasoningGeneration },
   { id: 'openai:gpt-6-sol', provider: 'openai', model: 'gpt-6-sol', imageInput: true, structuredOutput: true, generation: reasoningGeneration },
+  { id: 'openai:gpt-6.2-astra', provider: 'openai', model: 'gpt-6.2-astra', imageInput: true, structuredOutput: true, generation: reasoningGeneration },
+  { id: 'openai:gpt-6.2-sol', provider: 'openai', model: 'gpt-6.2-sol', imageInput: true, structuredOutput: true, generation: reasoningGeneration },
 ] as const
 
 export type AptitudeEnvironment = Record<string, string | undefined>

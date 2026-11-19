@@ -11,7 +11,7 @@ describe('explicit aptitude model profiles', () => {
     expect(configuredAptitudeComparisonModels(env).map(model => model.id)).toEqual(DEFAULT_APTITUDE_COMPARISON_MODELS)
   })
   it('allows explicit challenger selection without adding implicit fallback calls', () => {
-    for (const id of ['anthropic:claude-sonnet-5-5', 'openai:gpt-6-sol']) {
+    for (const id of ['anthropic:claude-sonnet-5-5', 'openai:gpt-6-sol', 'openai:gpt-6.2-astra', 'openai:gpt-6.2-sol']) {
       const models = configuredAptitudeModels({ ...env, APTITUDE_MODEL: id })
       expect(models.map(model => model.id)).toEqual([id])
       expect(models[0]).toMatchObject({ imageInput: true, structuredOutput: true, generation: { maxOutputTokens: 6000, reasoningEffort: 'high' } })
@@ -19,10 +19,14 @@ describe('explicit aptitude model profiles', () => {
     }
     expect(configuredAptitudeComparisonModels({ ...env, APTITUDE_COMPARISON_MODELS: 'anthropic:claude-sonnet-5-5,openai:gpt-6-sol' }).map(model => model.id))
       .toEqual(['anthropic:claude-sonnet-5-5', 'openai:gpt-6-sol'])
+    expect(configuredAptitudeComparisonModels({ OPENAI_API_KEY: env.OPENAI_API_KEY, APTITUDE_COMPARISON_MODELS: 'openai:gpt-6.2-astra,openai:gpt-6.2-sol' }).map(model => model.id))
+      .toEqual(['openai:gpt-6.2-astra', 'openai:gpt-6.2-sol'])
   })
   it('still requires each configured provider key and an exact allowlist match', () => {
     expect(() => configuredAptitudeModels({ OPENAI_API_KEY: env.OPENAI_API_KEY, APTITUDE_MODEL: 'anthropic:claude-sonnet-5-5' })).toThrow(/ANTHROPIC_API_KEY/)
-    expect(() => configuredAptitudeModels({ ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY, APTITUDE_MODEL: 'openai:gpt-6-sol' })).toThrow(/OPENAI_API_KEY/)
+    for (const id of ['openai:gpt-6-sol', 'openai:gpt-6.2-astra', 'openai:gpt-6.2-sol']) {
+      expect(() => configuredAptitudeModels({ ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY, APTITUDE_MODEL: id })).toThrow(/OPENAI_API_KEY/)
+    }
     expect(() => aptitudeModel('openai:gpt-6-arbitrary')).toThrow(/unsupported/)
     expect(() => aptitudeModel('anthropic:claude-sonnet-5-5-unverified')).toThrow(/unsupported/)
     expect(() => configuredAptitudeComparisonModels({ ...env, APTITUDE_COMPARISON_MODELS: 'openai:gpt-6-sol,openai:gpt-6-sol' })).toThrow(/distinct/)
