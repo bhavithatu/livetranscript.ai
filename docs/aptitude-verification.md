@@ -422,3 +422,49 @@ independent review. Offline re-verification recovers exactly one valid chart
 answer without relaxing numeric choice checks. The final preview build
 explicitly disables additional paid checks: it reuses the original 30-call
 evidence and separate local correction replay. Production remains unchanged.
+
+### Completed laptop flow and upload safeguard — November 19, 2026
+
+The authenticated preview at commit `9deea4a81c5d8f63ad882277eb3367051f7d627d`
+was tested in Chrome using original practice content. An initial window stream
+rendered the app itself and was stopped before analysis. The corrected Chrome
+tab source showed the intended chart. Three captures produced six completed
+provider results with no errors or duplicate automatic captures:
+
+- Manual chart: both models correctly selected B, Aspen (33⅓% growth versus
+  20% for the alternatives); first completed answer 6.578 seconds, complete
+  comparison 12.318 seconds. Source-field organization differed, so the app
+  conservatively retained 45/100 heuristic confidence.
+- Automatic workplace scenario: both models suggested B and provided all three
+  behavioral guidance sections; complete comparison 7.352 seconds. This is
+  guidance, not an employer's answer key or objective correctness score.
+- Automatic incomplete response scale: both requested the missing choices
+  without inventing an answer; complete comparison 5.567 seconds.
+
+Session export and reload succeeded. The second export's entries and guidance
+match the first exactly, and selecting a restored result shows its matching
+screenshot. Automatic capture and sharing were stopped. No real assessment was
+changed. These six calls are separate from the earlier 30-call practice suite.
+
+A valid screenshot upload eventually finished but showed an unexplained delay.
+The follow-up adds separate 30-second bounds for file reading and image decoding,
+cleanup on cancellation, and clear retry errors. A local browser bundle of the
+exact final helper loaded a valid 1100×620 PNG in 0.09 seconds, rejected a corrupt
+PNG, and loaded a subsequent valid retry in 0.06 seconds, with no model calls.
+The delay's underlying cause was not established.
+
+Latest full-app preview:
+https://livetranscript-qt9rgj6bw-revanth-sai-reddy-venumbaka-s-projects.vercel.app
+
+Its build and health endpoint pass at commit
+`a1ee44421663403b41ba24d219e7aa35618752c1`. The authenticated end-to-end run was
+on the preceding preview; the upload follow-up was browser-tested through the
+actual helper bundle, not another authenticated run on the new preview.
+
+Final suite: **1,635 tests passed across 188 files**, 106.72 seconds with two
+workers. A real-clock 15ms test deadline was made deterministic with a controlled
+monotonic clock while retaining and strengthening its timeout assertions; app
+deadlines are unchanged. The upload-focused 34 checks, TypeScript, focused lint
+and preview build passed. No additional provider calls were made for this
+follow-up. Production remains unchanged and temporary credential targets were
+restored. Complete results and screenshots are in the assessment quality report.

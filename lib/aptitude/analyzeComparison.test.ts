@@ -81,16 +81,32 @@ describe('bounded comparison orchestration', () => {
     expect(onAttempt.mock.calls.find(([attempt]) => !attempt.completed)?.[0]).toMatchObject({ model: 'gpt-returned', inputTokens: 11, outputTokens: 3 })
   })
   it('marks an uncooperative candidate timed out under the shared deadline and keeps an eligible completion', async () => {
-    const signals: AbortSignal[] = []
-    const transport = vi.fn<AptitudeTransport>().mockImplementation(async input => {
-      signals.push(input.signal)
-      if (input.candidate.provider === 'anthropic') return reply('claude-returned')
-      return new Promise(() => {})
-    })
-    const result = await analyzeAptitude(request, undefined, { env, transport, timeoutMs: 15 })
-    expect(result).toMatchObject({ status: 'ambiguous', answer: null, comparison: { decision: 'insufficient', agreementCount: 1 } })
-    expect(result.comparison?.candidates.map(candidate => candidate.status)).toEqual(['complete', 'timed_out'])
-    expect(signals.every(signal => signal.aborted)).toBe(true)
+    // Eligibility depends on both the timeout and the monotonic clock, not laptop scheduling.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
+    try {
+      const signals: AbortSignal[] = []
+      const progress: AptitudeProgressUpdate[] = []
+      const transport = vi.fn<AptitudeTransport>().mockImplementation(async input => {
+        signals.push(input.signal)
+        if (input.candidate.provider === 'anthropic') return reply('claude-returned')
+        return new Promise(() => {})
+      })
+      const analysis = analyzeAptitude(request, undefined, { env, transport, timeoutMs: 15, onProgress: event => progress.push(event) })
+      await vi.advanceTimersByTimeAsync(0)
+      expect(transport).toHaveBeenCalledTimes(2)
+      expect(progress.filter(event => event.type === 'candidate')).toEqual([
+        expect.objectContaining({ candidate: expect.objectContaining({ provider: 'anthropic', status: 'complete', observation: expect.objectContaining({ status: 'solved' }) }) }),
+      ])
+      await vi.advanceTimersByTimeAsync(14)
+      expect(signals.every(signal => !signal.aborted)).toBe(true)
+      await vi.advanceTimersByTimeAsync(1)
+      const result = await analysis
+      expect(result).toMatchObject({ status: 'ambiguous', answer: null, comparison: { decision: 'insufficient', agreementCount: 1 } })
+      expect(result.comparison?.candidates.map(candidate => candidate.status)).toEqual(['complete', 'timed_out'])
+      expect(signals.every(signal => signal.aborted)).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
   })
   it('returns explicit timed-out candidates when every model misses the deadline', async () => {
     const transport = vi.fn<AptitudeTransport>().mockImplementation(() => new Promise(() => {}))
