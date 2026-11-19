@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { comparisonAnswersMatch, selectAptitudeComparison } from './comparison'
 import { parseAptitudeComparison, parseAptitudeResult, type AptitudeComparisonCandidate, type AptitudeObservation } from './schema'
 import { verifyAptitudeObservation } from './verify'
-import { solvedObservation } from './testFixtures'
+import { solvedGridObservation, solvedObservation } from './testFixtures'
 
 const ids = ['anthropic:claude-sonnet-4-5', 'openai:gpt-4.1', 'openai:gpt-4.1-mini']
 function candidate(index: number, observation = solvedObservation()): AptitudeComparisonCandidate {
@@ -118,6 +118,35 @@ describe('deterministic model comparison', () => {
     expect(selectAptitudeComparison(candidates).comparison).toMatchObject({ decision: 'disagreement', selectedModelId: null })
     other.answer!.evidence = [...first.answer!.evidence].reverse()
     expect(selectAptitudeComparison([candidate(0, first), candidate(1, other)]).comparison.decision).toBe('agreement')
+  })
+  it('compares typed source and option cells even when answer and prose are identical', () => {
+    const first = solvedGridObservation()
+    const sourceMismatch = structuredClone(first)
+    sourceMismatch.answer!.gridInventory!.panels[0].filledCells = ['r2c2']
+    const optionMismatch = structuredClone(first)
+    optionMismatch.answer!.gridInventory!.options[1].filledCells = ['r1c1']
+    const missingMismatch = structuredClone(first)
+    missingMismatch.answer!.gridInventory!.panels[3].filledCells = []
+    const omitted = structuredClone(first)
+    delete omitted.answer!.gridInventory
+    for (const other of [sourceMismatch, optionMismatch, missingMismatch, omitted]) {
+      const candidates = [candidate(0, first), candidate(1, other)]
+      expect(comparisonAnswersMatch(candidates)).toBe(true)
+      expect(selectAptitudeComparison(candidates).comparison).toMatchObject({ decision: 'disagreement', selectedModelId: null, agreementCount: 0 })
+    }
+  })
+  it('canonicalizes grid record order and option IDs without losing literal cells', () => {
+    const first = solvedGridObservation()
+    const other = structuredClone(first)
+    const grid = other.answer!.gridInventory!
+    grid.panels.reverse(); grid.options.reverse(); grid.options[1].filledCells.reverse()
+    other.question!.options[1] = { ...other.question!.options[1], id: 'second-choice', label: '(B)' }
+    other.question!.options.reverse()
+    other.answer!.selectedOptionIds = ['second-choice']
+    grid.options[0].optionId = 'second-choice'
+    const candidates = [candidate(0, first), candidate(1, other)]
+    expect(selectAptitudeComparison(candidates).comparison).toMatchObject({ decision: 'agreement', agreementCount: 2 })
+    expect(parseAptitudeResult(completedResult(candidates)).answer!.gridInventory).toEqual(first.answer!.gridInventory)
   })
 })
 

@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { analyzeAptitude, type AptitudeTransport } from './analyze'
 import { configuredAptitudeModels } from './modelPolicy'
 import { validateAptitudeImage } from './image'
-import { solvedObservation, TEST_IMAGE, TEST_REQUEST } from './testFixtures'
+import { solvedGridObservation, solvedObservation, TEST_IMAGE, TEST_REQUEST } from './testFixtures'
 
 const env = { OPENAI_API_KEY: 'test-placeholder', APTITUDE_MODEL: 'openai:gpt-4.1' }
 const reply = () => ({ text: JSON.stringify(solvedObservation()), model: 'gpt-4.1-actual-snapshot' })
@@ -29,6 +29,14 @@ describe('grounded aptitude analysis', () => {
     expect(result.status).toBe('solved')
     expect(transport).toHaveBeenCalledTimes(2)
     expect(transport.mock.calls.every(([input]) => input.request.image === TEST_IMAGE)).toBe(true)
+  })
+  it('preserves the provider grid inventory through parsing, verification, and internal analysis results', async () => {
+    const observation = solvedGridObservation()
+    const transport = vi.fn<AptitudeTransport>().mockResolvedValue({ text: JSON.stringify(observation), model: 'actual-grid-model' })
+    const result = await analyzeAptitude(TEST_REQUEST, undefined, { env, transport })
+    expect(result.status).toBe('solved')
+    expect(result.answer!.gridInventory).toEqual(observation.answer!.gridInventory)
+    expect(transport).toHaveBeenCalledOnce()
   })
   it('does not fallback or publish a late answer after cancellation', async () => {
     const controller = new AbortController()

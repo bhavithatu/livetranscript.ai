@@ -2,6 +2,7 @@ import { parseAptitudeObservation, parseAptitudeResult, type AptitudeResult } fr
 import type { AptitudeFixture } from './fixtures'
 import { calculateExpression } from '@/lib/aptitude/calculator'
 import { hasCorrectRotationGridInventory } from './gridEvidence'
+import { hasCorrectStructuredRotationGridInventory } from './structuredGridEvidence'
 
 export type AptitudeEvidenceReview = {
   checks: { id: string; description: string; passed: boolean }[]
@@ -33,11 +34,15 @@ function reviewEvidence(fixture: AptitudeFixture, result: Pick<AptitudeResult, '
   if (!fixture.expected.evidenceChecks?.length && fixture.expected.calculationValue === undefined) return null
   const evidence = [result.question?.stem ?? '', ...(result.answer?.evidence ?? []), ...(result.answer?.workedExplanation ?? []), result.answer?.calculation?.expression ?? ''].join('\n')
   const checks = (fixture.expected.evidenceChecks ?? []).map(check => {
-    const inventory = check.gridRotationInventory ? hasCorrectRotationGridInventory(result.answer?.evidence ?? [], result.question?.options ?? []) : null
+    const inventory = check.gridRotationInventory
+      ? result.answer?.gridInventory != null
+        ? hasCorrectStructuredRotationGridInventory(result.answer.gridInventory, result.question?.options ?? [])
+        : hasCorrectRotationGridInventory(result.answer?.evidence ?? [], result.question?.options ?? [])
+      : null
     return {
       id: check.id, description: check.description,
-      // Exact source/choice configurations establish the known rotation without an English keyword.
-      // Absent coordinates retain the verbal rubric; incorrect coordinates cannot fall back to it.
+      // Typed facts are authoritative; their correctness does not depend on prose
+      // formatting. Older offline responses retain the legacy evidence rubric.
       passed: (inventory ?? check.allPatterns.every(pattern => new RegExp(pattern, 'iu').test(evidence)))
         && !(check.forbiddenPatterns ?? []).some(pattern => new RegExp(pattern, 'iu').test(evidence)),
     }

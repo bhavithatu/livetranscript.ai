@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AptitudeCapture } from './captureDetector'
 import {
+  APTITUDE_CONTRACT_HEADER,
+  APTITUDE_CONTRACT_VERSION,
   parseAptitudeResult,
   type AptitudeCategorySelection,
   type AptitudeRequest,
@@ -99,7 +101,7 @@ export function useAptitudeSession() {
     }
     try {
       const response = await fetch('/api/aptitude/analyze', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json', [APTITUDE_CONTRACT_HEADER]: APTITUDE_CONTRACT_VERSION },
         body: JSON.stringify(body), signal: controller.signal,
       })
       if (!isCurrent()) return

@@ -178,3 +178,14 @@ one selector. Copy answer reports clipboard success or exposes a selectable
 fallback; it does not claim control of another website. Focused UI tests cover
 these actions. The exact combined commit's full-suite and browser results are
 recorded in the linked PR checks; stubbed browser timing is not provider latency.
+
+Repeated live checks exposed a separate evaluator defect: correct literal grid
+inventories were rejected when the model changed headings, used abbreviated
+panel labels, or placed choice coordinates in the structured options field.
+Those cases were captured as offline regressions, but free-form English remained
+an unreliable contract for a production gate. Regular-grid provider responses
+now include a typed cell inventory, and the release gate compares all source
+panels, the missing position and all four choice mappings directly against the
+original fixture. Incorrect or incomplete structured inventories still fail;
+equivalent English phrasing is no longer a release criterion. This change is
+evaluation infrastructure and does not establish general model accuracy.

@@ -2,7 +2,7 @@
 export const APTITUDE_RELEASE_LOG_MAX_BYTES = 2_000
 
 export function aptitudeReleaseLogLines(
-  section: 'fixture' | 'candidate' | 'score' | 'evidence' | 'explanation' | 'option' | 'summary',
+  section: 'fixture' | 'candidate' | 'score' | 'evidence' | 'explanation' | 'option' | 'grid' | 'summary',
   context: { fixtureId?: string; modelId?: string; item?: number },
   details: Record<string, unknown>,
 ): string[] {

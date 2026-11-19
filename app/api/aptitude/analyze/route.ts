@@ -3,7 +3,7 @@ import { currentUserId } from '@/lib/auth'
 import { readRepoJson, RepoRequestError } from '@/lib/repo/agentHttp'
 import { analyzeAptitude } from '@/lib/aptitude/analyze'
 import { AptitudeServiceError } from '@/lib/aptitude/modelPolicy'
-import { AptitudeValidationError, MAX_APTITUDE_BODY_BYTES, parseAptitudeRequest } from '@/lib/aptitude/schema'
+import { APTITUDE_CONTRACT_HEADER, APTITUDE_CONTRACT_VERSION, AptitudeValidationError, MAX_APTITUDE_BODY_BYTES, parseAptitudeRequest } from '@/lib/aptitude/schema'
 import { recordUsage } from '@/lib/usage'
 
 export const runtime = 'nodejs'
@@ -17,6 +17,7 @@ export async function POST(req: NextRequest) {
     const origin = req.headers.get('origin')
     if ((origin && origin !== req.nextUrl.origin) || req.headers.get('sec-fetch-site') === 'cross-site') return NextResponse.json({ error: 'Cross-origin requests are not allowed.', code: 'INVALID_ORIGIN' }, { status: 403, headers })
     const request = parseAptitudeRequest(await readRepoJson(req, MAX_APTITUDE_BODY_BYTES))
+    if (req.headers.get(APTITUDE_CONTRACT_HEADER) !== APTITUDE_CONTRACT_VERSION) return NextResponse.json({ error: 'Aptitude has been updated. Refresh this tab once, then retry your capture.', code: 'CLIENT_UPDATE_REQUIRED' }, { status: 409, headers })
     const result = await analyzeAptitude(request, req.signal, { onAttempt: attempt => recordUsage('aptitude', userId, attempt) })
     return NextResponse.json(result, { headers })
   } catch (error) {

@@ -6,11 +6,13 @@ import { APTITUDE_FIXTURES } from './fixtures'
 import { APTITUDE_RELEASE_FIXTURE_IDS, APTITUDE_RELEASE_MAX_CALLS, assessAptitudeReleaseFixture, inspectAptitudeReleaseReply, safeAptitudeProviderError } from './releaseGate'
 import { AptitudeEvaluationCallGuard, planAptitudeEvaluation } from './evaluationPlan'
 import { aptitudeReleaseEnvironment } from '../../scripts/aptitude-release-environment.mjs'
+import { structuredRotationObservation } from './structuredGridFixture'
 
 const ids = ['anthropic:claude-sonnet-4-5', 'openai:gpt-4.1', 'openai:gpt-4.1-mini']
 const imageHash = 'b'.repeat(64)
 const starFixture = APTITUDE_FIXTURES.find(fixture => fixture.id === 'visual-star-points')!
 const croppedFixture = APTITUDE_FIXTURES.find(fixture => fixture.id === 'visual-grid-cropped-choices')!
+const gridFixture = APTITUDE_FIXTURES.find(fixture => fixture.id === 'visual-grid-quarter-turns')!
 
 describe('paid deployment environment guard', () => {
   it.each([
@@ -56,6 +58,28 @@ function result(candidates: AptitudeComparisonCandidate[]) {
 }
 
 describe('production release criteria without provider calls', () => {
+  it('requires a correct typed grid from every candidate on the regular-grid release fixture', () => {
+    expect(gridFixture.expected.requireGridInventory).toBe(true)
+    const first = candidate(0, structuredRotationObservation())
+    const second = candidate(1, structuredRotationObservation())
+    expect(assessAptitudeReleaseFixture(gridFixture, result([first, second]), ids.slice(0, 2), imageHash).passed).toBe(true)
+    second.observation!.answer!.gridInventory!.panels[0].filledCells = ['r1c1', 'r2c1', 'r3c2']
+    const invalid = assessAptitudeReleaseFixture(gridFixture, result([first, second]), ids.slice(0, 2), imageHash)
+    expect(invalid.passed).toBe(false)
+    expect(invalid.failures).toContainEqual({ code: 'EVIDENCE_REVIEW_REQUIRED', modelId: ids[1] })
+  })
+
+  it.each([undefined, null])('blocks a missing typed release inventory (%s) even when legacy evidence is sufficient', inventory => {
+    const second = candidate(1, structuredRotationObservation())
+    if (inventory === undefined) delete second.observation!.answer!.gridInventory
+    else second.observation!.answer!.gridInventory = inventory
+    second.observation!.answer!.evidence = ['Every panel contains three filled squares.']
+    const check = assessAptitudeReleaseFixture(gridFixture, result([candidate(0, structuredRotationObservation()), second]), ids.slice(0, 2), imageHash)
+    expect(check.passed).toBe(false)
+    expect(check.failures).toContainEqual({ code: 'MISSING_GRID_INVENTORY', modelId: ids[1] })
+    expect(check.candidates[1].score?.evidenceReview?.reviewRequired).toBe(false)
+  })
+
   it('requires the original four-fixture plan and preserves two-model and three-model budgets', () => {
     expect(APTITUDE_RELEASE_FIXTURE_IDS).toHaveLength(4)
     expect(APTITUDE_RELEASE_FIXTURE_IDS.every(id => APTITUDE_FIXTURES.some(fixture => fixture.id === id))).toBe(true)

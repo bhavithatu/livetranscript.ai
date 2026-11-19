@@ -66,6 +66,7 @@ export function assessAptitudeReleaseFixture(fixture: AptitudeFixture, raw: unkn
     else if (fixture.expected.status === 'solved') {
       if (candidate.observation?.status !== 'solved') fail('OBJECTIVE_NOT_SOLVED')
       else if (!score.answerCorrect) fail('WRONG_OBJECTIVE_ANSWER')
+      if (fixture.expected.requireGridInventory && candidate.observation?.answer?.gridInventory == null) fail('MISSING_GRID_INVENTORY')
       if (score.evidenceReview?.reviewRequired) fail('EVIDENCE_REVIEW_REQUIRED')
     } else {
       if (candidate.observation?.status !== 'needs_capture' || candidate.observation.answer !== null || !score.answerCorrect) fail('INCORRECT_CAPTURE_ABSTENTION')

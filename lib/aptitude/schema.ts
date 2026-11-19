@@ -19,6 +19,9 @@ export const APTITUDE_CATEGORY_LABELS: Record<AptitudeCategory, string> = {
 // Includes data-URL overhead; leaves headroom below hosted function body limits.
 export const MAX_APTITUDE_IMAGE_CHARS = 3_500_000
 export const MAX_APTITUDE_BODY_BYTES = MAX_APTITUDE_IMAGE_CHARS + 2_000
+// Older open tabs strictly reject added answer fields and must refresh before a paid call.
+export const APTITUDE_CONTRACT_HEADER = 'x-lt-aptitude-contract'
+export const APTITUDE_CONTRACT_VERSION = 'grid-v1'
 export type AptitudeRequest = {
   captureId: string
   questionVersion: number
@@ -35,6 +38,16 @@ export type AptitudeQuestion = {
   responseType: 'single_choice' | 'multiple_choice' | 'free_response' | 'unknown'
   missingEvidence: string[]
 }
+/** Literal observations of a regular grid, never inferred contents of a missing panel.
+ * All panel and cell coordinates are one-based; cell strings use r<row>c<column>. */
+export type AptitudeGridInventory = {
+  rows: number
+  columns: number
+  cellRows: number
+  cellColumns: number
+  panels: { row: number; column: number; filledCells: string[] | null }[]
+  options: { optionId: string; filledCells: string[] }[]
+}
 export type AptitudeAnswer = {
   selectedOptionIds: string[]
   value: string | null
@@ -46,6 +59,8 @@ export type AptitudeAnswer = {
   /** Present only for a next-value prediction using one of these exact, bounded numeric rules.
    * Optional on the wire so captures produced before this field remain readable. */
   numericPattern?: { observedValues: number[]; rule: 'constant_difference' | 'constant_second_difference' | 'constant_ratio' } | null
+  /** Required by new provider outputs, optional when reading earlier observations. */
+  gridInventory?: AptitudeGridInventory | null
 }
 export type AptitudeStatus = 'solved' | 'needs_capture' | 'ambiguous' | 'unsupported' | 'error'
 export type AptitudeVerification = {
@@ -156,9 +171,46 @@ function parseQuestion(value: unknown): AptitudeQuestion | null {
     responseType: member(item.responseType, ['single_choice', 'multiple_choice', 'free_response', 'unknown'], 'response type'),
     missingEvidence: strings(item.missingEvidence, 'missing evidence') }
 }
+function gridDimension(value: unknown, name: string): number {
+  const dimension = finiteNumber(value, name)
+  if (!Number.isInteger(dimension) || dimension < 1 || dimension > 8) return fail(`${name} must be an integer from 1 to 8`)
+  return dimension
+}
+function parseGridInventory(value: unknown): AptitudeGridInventory | null {
+  if (value === null) return null
+  const item = object(value, 'Grid inventory', ['rows', 'columns', 'cellRows', 'cellColumns', 'panels', 'options'])
+  const rows = gridDimension(item.rows, 'Grid rows'), columns = gridDimension(item.columns, 'Grid columns')
+  const cellRows = gridDimension(item.cellRows, 'Cell rows'), cellColumns = gridDimension(item.cellColumns, 'Cell columns')
+  const panelCount = rows * columns
+  if (panelCount > 36 || !Array.isArray(item.panels) || item.panels.length !== panelCount) return fail('Grid inventory must include every source panel, at most 36')
+  function cells(value: unknown): string[] {
+    const filledCells = strings(value, 'filled cells', cellRows * cellColumns, 4)
+    if (new Set(filledCells).size !== filledCells.length) return fail('Filled cell coordinates must be unique')
+    for (const cell of filledCells) {
+      const match = /^r([1-8])c([1-8])$/.exec(cell)
+      if (!match || Number(match[1]) > cellRows || Number(match[2]) > cellColumns) return fail('Filled cell coordinate is outside the declared grid')
+    }
+    return filledCells
+  }
+  const panels = item.panels.map(value => {
+    const panel = object(value, 'Grid panel', ['row', 'column', 'filledCells'])
+    const row = gridDimension(panel.row, 'Panel row'), column = gridDimension(panel.column, 'Panel column')
+    if (row > rows || column > columns) return fail('Panel position is outside the declared grid')
+    return { row, column, filledCells: panel.filledCells === null ? null : cells(panel.filledCells) }
+  })
+  if (new Set(panels.map(panel => `${panel.row}:${panel.column}`)).size !== panelCount) return fail('Source panel positions must be unique')
+  if (panels.every(panel => panel.filledCells === null)) return fail('Grid inventory requires at least one observed source panel')
+  if (!Array.isArray(item.options) || item.options.length > 20) return fail('Invalid grid option inventory')
+  const options = item.options.map(value => {
+    const option = object(value, 'Grid option', ['optionId', 'filledCells'])
+    return { optionId: string(option.optionId, 'grid option ID', 80, true), filledCells: cells(option.filledCells) }
+  })
+  if (new Set(options.map(option => option.optionId)).size !== options.length) return fail('Grid option IDs must be unique')
+  return { rows, columns, cellRows, cellColumns, panels, options }
+}
 function parseAnswer(value: unknown): AptitudeAnswer | null {
   if (value === null) return null
-  const item = object(value, 'Answer', ['selectedOptionIds', 'value', 'unit', 'summary', 'workedExplanation', 'evidence', 'calculation', 'numericPattern'], ['numericPattern'])
+  const item = object(value, 'Answer', ['selectedOptionIds', 'value', 'unit', 'summary', 'workedExplanation', 'evidence', 'calculation', 'numericPattern', 'gridInventory'], ['numericPattern', 'gridInventory'])
   let calculation: AptitudeAnswer['calculation'] = null
   if (item.calculation !== null) {
     const calc = object(item.calculation, 'Calculation', ['expression', 'claimedValue', 'decimalPlaces'])
@@ -186,7 +238,8 @@ function parseAnswer(value: unknown): AptitudeAnswer | null {
   return { selectedOptionIds, value: nullableString(item.value, 'answer value', 500), unit: nullableString(item.unit, 'unit', 100),
     summary: string(item.summary, 'answer summary', 1_000, true), workedExplanation: strings(item.workedExplanation, 'worked explanation', 6, 2_000),
     evidence: strings(item.evidence, 'answer evidence', 12, 2_000), calculation,
-    ...('numericPattern' in item ? { numericPattern } : {}) }
+    ...('numericPattern' in item ? { numericPattern } : {}),
+    ...('gridInventory' in item ? { gridInventory: parseGridInventory(item.gridInventory) } : {}) }
 }
 function validateConsistency(observation: { category: AptitudeCategory; status: AptitudeStatus; question: AptitudeQuestion | null; answer: AptitudeAnswer | null; message: string | null }) {
   const { question, answer, status, category } = observation
@@ -200,6 +253,7 @@ function validateConsistency(observation: { category: AptitudeCategory; status: 
   if (!answer.workedExplanation.length || !answer.evidence.length) return fail('An answer requires a worked explanation and visible evidence')
   const ids = new Set(question.options.map(option => option.id))
   if (answer.selectedOptionIds.some(id => !ids.has(id))) return fail('Selected option does not exist in the question')
+  if (answer.gridInventory && (answer.gridInventory.options.length !== ids.size || answer.gridInventory.options.some(option => !ids.has(option.optionId)))) return fail('Grid inventory must map every visible option ID exactly once')
   if (question.responseType === 'single_choice' && (question.options.length < 2 || answer.selectedOptionIds.length !== 1)) return fail('Select exactly one visible option')
   if (question.responseType === 'multiple_choice' && (question.options.length < 2 || !answer.selectedOptionIds.length)) return fail('Select visible options')
   if (question.responseType === 'free_response' && (answer.selectedOptionIds.length || !answer.value?.trim())) return fail('A free response requires a value and no selected options')
@@ -294,6 +348,17 @@ const questionSchema = strictObject({
   responseType: { type: 'string', enum: ['single_choice', 'multiple_choice', 'free_response', 'unknown'] },
   missingEvidence: { ...list(textSchema), description: 'Specific missing or unreadable content, including visible labels or screen locations of omitted choices. Do not invent their content.' },
 })
+const gridDimensionSchema = { type: 'integer', description: 'Integer from 1 to 8.' }
+const filledCellsSchema = { ...list(textSchema), description: 'Unique occupied cell coordinates r<row>c<column>, one-based and within cellRows/cellColumns, in row-major order. An empty array means a visible empty panel.' }
+const gridInventorySchema = strictObject({
+  rows: gridDimensionSchema, columns: gridDimensionSchema,
+  cellRows: gridDimensionSchema, cellColumns: gridDimensionSchema,
+  panels: { ...list(strictObject({ row: gridDimensionSchema, column: gridDimensionSchema,
+    filledCells: { anyOf: [filledCellsSchema, { type: 'null' }], description: 'Null only for a visible missing/question-mark panel. Never fill it with the predicted answer.' } })),
+    description: 'Every source panel exactly once, including visible missing panels, in row-major order. Exactly rows*columns entries, at most 36, with at least one observed panel.' },
+  options: { ...list(strictObject({ optionId: textSchema, filledCells: filledCellsSchema })),
+    description: 'One entry per question.options ID, at most 20, using its exact ID. Inventory the visible option, not the predicted source panel.' },
+})
 const answerSchema = strictObject({
   selectedOptionIds: list(textSchema), value: nullableTextSchema, unit: nullableTextSchema,
   summary: textSchema,
@@ -301,6 +366,7 @@ const answerSchema = strictObject({
   evidence: { ...list(textSchema), description: '1–12 nonempty literal observations, each at most 2000 characters. Group panel rows or choice inventories when needed, retaining all relevant visible features and locations.' },
   calculation: { anyOf: [strictObject({ expression: textSchema, claimedValue: { type: 'number' }, decimalPlaces: { type: ['integer', 'null'] } }), { type: 'null' }] },
   numericPattern: { anyOf: [strictObject({ observedValues: list({ type: 'number' }), rule: { type: 'string', enum: ['constant_difference', 'constant_second_difference', 'constant_ratio'] } }), { type: 'null' }] },
+  gridInventory: { anyOf: [gridInventorySchema, { type: 'null' }], description: 'Required literal inventory for a fully readable regular-cell grid matrix with compatible grid options; null for non-grid questions. Unreadable or incomplete grids require needs_capture with answer null.' },
 })
 /** Provider-side schema plus strict runtime/semantic validation above. */
 export const APTITUDE_OBSERVATION_JSON_SCHEMA = strictObject({

@@ -20,8 +20,21 @@ function sourceKey(candidate: AptitudeComparisonCandidate): string | null {
   // Matching that text and a final answer cannot corroborate incompatible pixels.
   const visualEvidence = observation.category === 'abstract' || observation.category === 'spatial'
     ? observation.answer?.evidence.map(item => item.trim().replace(/\s+/g, ' ')).sort() ?? [] : null
+  const grid = observation.answer?.gridInventory
+  // Provider IDs and record order are arbitrary; visible option identity and
+  // occupied cells are source facts. A missing marker never equals an empty grid.
+  const gridInventory = grid ? {
+    rows: grid.rows, columns: grid.columns, cellRows: grid.cellRows, cellColumns: grid.cellColumns,
+    panels: grid.panels.map(panel => ({ ...panel, filledCells: panel.filledCells === null ? null : [...panel.filledCells].sort() }))
+      .sort((a, b) => a.row - b.row || a.column - b.column),
+    options: grid.options.map(inventory => {
+      const option = question.options.find(option => option.id === inventory.optionId)
+      return option ? { label: canonicalAptitudeOptionLabel(option.label), text: option.text, filledCells: [...inventory.filledCells].sort() } : null
+    }).sort((a, b) => a && b ? a.label.localeCompare(b.label) || a.text.localeCompare(b.text) : 0),
+  } : null
+  if (gridInventory?.options.some(option => option === null)) return null
   return JSON.stringify({ category: observation.category, stem: question.stem, instructions: question.instructions,
-    passage: question.passage, responseType: question.responseType, options, visualEvidence })
+    passage: question.passage, responseType: question.responseType, options, visualEvidence, gridInventory })
 }
 function answerKey(candidate: AptitudeComparisonCandidate): string | null {
   const answer = candidate.observation?.answer

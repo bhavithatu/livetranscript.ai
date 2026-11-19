@@ -5,13 +5,14 @@ import { POST } from './route'
 import { currentUserId } from '@/lib/auth'
 import { analyzeAptitude } from '@/lib/aptitude/analyze'
 import { AptitudeServiceError } from '@/lib/aptitude/modelPolicy'
-import { MAX_APTITUDE_BODY_BYTES } from '@/lib/aptitude/schema'
-import { TEST_REQUEST } from '@/lib/aptitude/testFixtures'
+import { APTITUDE_CONTRACT_HEADER, APTITUDE_CONTRACT_VERSION, MAX_APTITUDE_BODY_BYTES, parseAptitudeResult, type AptitudeResult } from '@/lib/aptitude/schema'
+import { solvedGridObservation, TEST_REQUEST } from '@/lib/aptitude/testFixtures'
+import { comparisonFixture } from '@/components/aptitude/comparisonTestFixtures'
 
 vi.mock('@/lib/auth', () => ({ currentUserId: vi.fn() }))
 vi.mock('@/lib/aptitude/analyze', () => ({ analyzeAptitude: vi.fn() }))
 vi.mock('@/lib/usage', () => ({ recordUsage: vi.fn() }))
-const request = (body: unknown = TEST_REQUEST, headers: Record<string, string> = {}, signal?: AbortSignal) => new NextRequest('https://app.test/api/aptitude/analyze', { method: 'POST', body: JSON.stringify(body), headers, signal })
+const request = (body: unknown = TEST_REQUEST, headers: Record<string, string> = {}, signal?: AbortSignal) => new NextRequest('https://app.test/api/aptitude/analyze', { method: 'POST', body: JSON.stringify(body), headers: { [APTITUDE_CONTRACT_HEADER]: APTITUDE_CONTRACT_VERSION, ...headers }, signal })
 beforeEach(() => { vi.clearAllMocks(); vi.mocked(currentUserId).mockResolvedValue('user-test') })
 describe('aptitude endpoint boundaries', () => {
   it('authenticates before a model call', async () => {
@@ -28,6 +29,31 @@ describe('aptitude endpoint boundaries', () => {
     expect((await POST(request(TEST_REQUEST, { 'content-length': String(MAX_APTITUDE_BODY_BYTES + 1) }))).status).toBe(413)
     expect((await POST(request({ ...TEST_REQUEST, image: 'x'.repeat(MAX_APTITUDE_BODY_BYTES + 1) }, { 'content-length': '1' }))).status).toBe(413)
     expect(analyzeAptitude).not.toHaveBeenCalled()
+  })
+  it.each([null, 'unsupported-version'])('asks an incompatible client (%s) to refresh before a paid model call', async (version) => {
+    const oldRequest = request()
+    if (version === null) oldRequest.headers.delete(APTITUDE_CONTRACT_HEADER)
+    else oldRequest.headers.set(APTITUDE_CONTRACT_HEADER, version)
+    const response = await POST(oldRequest)
+    expect(response.status).toBe(409)
+    expect(response.headers.get('cache-control')).toBe('no-store')
+    expect(await response.json()).toEqual({ error: 'Aptitude has been updated. Refresh this tab once, then retry your capture.', code: 'CLIENT_UPDATE_REQUIRED' })
+    expect(analyzeAptitude).not.toHaveBeenCalled()
+  })
+  it('preserves typed source facts in the selected and candidate answers for compatible clients', async () => {
+    const base: AptitudeResult = {
+      ...solvedGridObservation(), schemaVersion: 1, captureId: TEST_REQUEST.captureId, questionVersion: 1,
+      questionId: 'a'.repeat(64), sourceHash: 'b'.repeat(64), durationMs: 50,
+      model: 'test-model', provider: 'openai', verification: { method: 'source_review', outcome: 'not_run', notes: ['No independent visual check.'] },
+    }
+    const internal = comparisonFixture(base)
+    vi.mocked(analyzeAptitude).mockResolvedValue(internal)
+    const response = await POST(request({ ...TEST_REQUEST, strategy: 'compare' }))
+    expect(response.status).toBe(200)
+    const parsed = parseAptitudeResult(await response.json())
+    expect(parsed).toEqual(internal)
+    expect(parsed.answer!.gridInventory).toEqual(base.answer!.gridInventory)
+    expect(parsed.comparison!.candidates.every(candidate => candidate.observation?.answer?.gridInventory)).toBe(true)
   })
   it('returns actionable provider failures without caching private output', async () => {
     vi.mocked(analyzeAptitude).mockRejectedValue(new AptitudeServiceError('Configure OPENAI_API_KEY on the server.', 503, 'PROVIDER_UNAVAILABLE'))

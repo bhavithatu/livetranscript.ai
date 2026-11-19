@@ -4,7 +4,7 @@ import { expect, it } from 'vitest'
 import { analyzeAptitude, defaultAptitudeTransport } from '@/lib/aptitude/analyze'
 import { configuredAptitudeComparisonModels } from '@/lib/aptitude/modelPolicy'
 import { APTITUDE_SYSTEM_PROMPT } from '@/lib/aptitude/prompt'
-import { APTITUDE_OBSERVATION_JSON_SCHEMA, type AptitudeComparisonCandidate, type AptitudeResult } from '@/lib/aptitude/schema'
+import { APTITUDE_OBSERVATION_JSON_SCHEMA, type AptitudeComparisonCandidate, type AptitudeResult, type AptitudeGridInventory } from '@/lib/aptitude/schema'
 import { APTITUDE_FIXTURES } from './fixtures'
 import { renderAptitudeFixture } from './render'
 import { selectAptitudeFixtures } from './selectFixtures'
@@ -26,7 +26,8 @@ type BriefCandidate = {
   modelId: string; model: string | null; status: string; durationMs: number;
   answer: { labels: string[]; value: string | null; summary: string; evidence: string[]; workedExplanation: string[];
     calculation: { expression: string; claimedValue: number } | null;
-    numericPattern: { observedValues: number[]; rule: string } | null } | null;
+    numericPattern: { observedValues: number[]; rule: string } | null;
+    gridInventory: AptitudeGridInventory | null } | null;
   observationStatus: string | null;
   observedOptions: { label: string; text: string }[];
 }
@@ -46,6 +47,7 @@ function briefCandidate(candidate: AptitudeComparisonCandidate): BriefCandidate 
       evidence: answer.evidence.map(value => value.slice(0, 2_000)), workedExplanation: answer.workedExplanation.map(value => value.slice(0, 2_000)),
       calculation: answer.calculation ? { expression: answer.calculation.expression.slice(0, 200), claimedValue: answer.calculation.claimedValue } : null,
       numericPattern: answer.numericPattern ? { observedValues: answer.numericPattern.observedValues, rule: answer.numericPattern.rule } : null,
+      gridInventory: answer.gridInventory ?? null,
     } : null,
   }
 }
@@ -67,7 +69,7 @@ it.skipIf(aptitudeReleaseEnvironment(process.env) === null)('blocks an enabled d
       'Four original synthetic fixtures, not a general assessment accuracy estimate.',
       'Uses the production analysis and comparison path; browser capture, login and device behavior are not tested here.',
       'Candidate correctness and published selections are reported separately. Correct candidates can remain unselected when source evidence differs.',
-      'Bounded evidence rubrics may flag valid paraphrases and require review; passing is not proof of semantic correctness.',
+      'Regular-grid cells are checked from typed inventories; other bounded evidence rubrics may require review. Passing is not proof of every explanatory sentence.',
       'Only existing brief answers and cited evidence from original fixtures are reported; no hidden reasoning, provider error bodies or credentials.',
     ],
   }
@@ -166,6 +168,7 @@ it.skipIf(aptitudeReleaseEnvironment(process.env) === null)('blocks an enabled d
           answer?.evidence.forEach((text, index) => log('evidence', { ...context, item: index + 1 }, { text }))
           answer?.workedExplanation.forEach((text, index) => log('explanation', { ...context, item: index + 1 }, { text }))
           candidate?.observedOptions.forEach((option, index) => log('option', { ...context, item: index + 1 }, option))
+          log('grid', context, { inventory: answer?.gridInventory ?? null })
         }
       }
     }

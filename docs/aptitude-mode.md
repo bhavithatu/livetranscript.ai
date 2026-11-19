@@ -174,6 +174,12 @@ keeps the JSON body below the hosting request limit. The existing generic answer
 endpoint rejects `mode: aptitude`; the dedicated workflow cannot fall into its
 image-less speculative draft behavior.
 
+Updated browser clients identify their supported response contract in the
+`X-LT-Aptitude-Contract: grid-v1` request header. An older open tab receives a clear HTTP
+409 refresh message before any model call, preserving its capture for review.
+This avoids making an old strict client reinterpret new structured evidence or
+recompute a comparison from an incomplete response shape.
+
 One multimodal call extracts, classifies and proposes a structured answer.
 This is one call per candidate when comparison is selected. Omitting `strategy`
 retains single-model behavior for existing clients.
@@ -181,6 +187,19 @@ Provider output passes strict runtime validation. Selected IDs must exist in the
 captured options, single/multiple-choice cardinality must agree, and a solved
 answer must have complete evidence and a worked explanation. Partial/malformed
 JSON and fabricated option references never become completed answers.
+
+Regular cell-matrix questions also carry a structured `gridInventory` internally:
+outer matrix dimensions, inner cell dimensions, source-panel addresses, literal
+filled-cell coordinates, a null marker for a visibly missing panel, and option
+IDs mapped to their filled cells. Bounds, duplicates, completeness and option
+references are validated. This is a model transcription, not an independent
+image-reading or correctness guarantee. Non-grid answers use null; older
+responses that omit the field remain readable.
+
+The original quarter-turn release fixture compares this structured inventory
+against its authored panel and choice coordinates. It does not grade English
+headings or punctuation. Legacy prose normalization remains available for old
+offline fixtures, while the production grid gate requires structured evidence.
 
 The restricted calculator uses exact rational arithmetic and explicit rounding.
 It accepts only bounded numeric expressions; no generated code or unrestricted

@@ -1,7 +1,7 @@
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AptitudeCapture } from './captureDetector'
-import type { AptitudeRequest, AptitudeResult } from './schema'
+import { APTITUDE_CONTRACT_HEADER, APTITUDE_CONTRACT_VERSION, type AptitudeRequest, type AptitudeResult } from './schema'
 import { APTITUDE_HISTORY_LIMIT, APTITUDE_REQUEST_TIMEOUT_MS, useAptitudeSession } from './useAptitudeSession'
 import { comparisonFixture } from '@/components/aptitude/comparisonTestFixtures'
 
@@ -41,6 +41,19 @@ async function complete(index: number, value: unknown = answer(pending[index].re
 }
 
 describe('aptitude request lifecycle', () => {
+  it('advertises structured grid support and preserves the capture when a refresh is requested', async () => {
+    const { result } = renderHook(useAptitudeSession)
+    const screenshot = capture('contract-refresh')
+    act(() => { void result.current.analyze(screenshot) })
+    expect(fetch).toHaveBeenCalledWith('/api/aptitude/analyze', expect.objectContaining({
+      headers: { 'Content-Type': 'application/json', [APTITUDE_CONTRACT_HEADER]: APTITUDE_CONTRACT_VERSION },
+    }))
+    const error = 'Aptitude has been updated. Refresh this tab once, then retry your capture.'
+    await complete(0, { error, code: 'CLIENT_UPDATE_REQUIRED' }, 409)
+    expect(result.current.current).toMatchObject({ status: 'error', error, result: null })
+    expect(result.current.current?.capture).toBe(screenshot)
+    expect(pending).toHaveLength(1)
+  })
   it('separates single and comparison requests and preserves their own results in history', async () => {
     const { result } = renderHook(useAptitudeSession)
     const screenshot = capture('same-question')

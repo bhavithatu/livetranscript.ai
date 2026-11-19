@@ -21,6 +21,8 @@ export type AptitudeFixture = {
     optionTextByLabel?: Record<string, string>;
     evidenceChecks?: AptitudeEvidenceCheck[];
     calculationValue?: number;
+    /** Live release candidates must provide typed visual facts for this fixture. */
+    requireGridInventory?: boolean;
   }
 }
 /** Owned synthetic questions. Expected answers stay outside the image and provider prompt. */

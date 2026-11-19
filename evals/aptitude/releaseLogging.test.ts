@@ -1,11 +1,19 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
 import { APTITUDE_RELEASE_LOG_MAX_BYTES, aptitudeReleaseLogLines } from './releaseLogging'
+import { structuredRotationObservation } from './structuredGridFixture'
 
 const context = { fixtureId: 'visual-grid-quarter-turns', modelId: 'anthropic:fixture-model', item: 12 }
 const reconstruct = (lines: string[]) => JSON.parse(lines.map(line => line.replace(/^.*? \[part \d+\/\d+\] /, '')).join(''))
 
 describe('bounded release diagnostics (no model calls)', () => {
+  it('preserves the typed grid inventory in bounded reconstructable events', () => {
+    const details = { inventory: structuredRotationObservation().answer!.gridInventory }
+    const lines = aptitudeReleaseLogLines('grid', context, details)
+    expect(lines.every(line => Buffer.byteLength(line) <= APTITUDE_RELEASE_LOG_MAX_BYTES)).toBe(true)
+    expect(reconstruct(lines)).toEqual(details)
+  })
+
   it('keeps the exact failed rubric, validation diagnostic and safe metadata in separate readable events', () => {
     const metadata = { validated: true, diagnostic: { code: 'VALID', structuralCounts: { evidenceItems: 12, workedSteps: 3, options: 4 } } }
     const score = { answerCorrect: true, evidenceReview: { reviewRequired: true,
