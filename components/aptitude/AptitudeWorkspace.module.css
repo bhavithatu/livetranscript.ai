@@ -5,6 +5,8 @@
 .controlHeading h2, .sectionHeading h2, .practice h2 { font-size: 15px; font-weight: 650; line-height: 1.4; }
 .controlHeading p { margin-top: 5px; max-width: 620px; font-size: 13px; line-height: 1.6; color: var(--muted); }
 .category, .historySelect { display: flex; flex-direction: column; gap: 6px; color: var(--muted); font-size: 12px; font-weight: 550; }
+.history, .historySelect { min-width: 0; }
+.historySelect select { width: 100%; min-width: 0; }
 .category { min-width: 220px; }
 .analysisOptions { display: flex; flex-wrap: wrap; gap: 12px; margin: 12px 0; max-width: 600px; }
 .analysisOptions .category { min-width: 180px; flex: 1 1 180px; }
@@ -147,7 +149,7 @@
   .controlHeading { gap: 14px; }
 }
 @media (max-width: 450px) {
-  .side { display: flex; }
+  .side { display: flex; align-items: stretch; }
   .buttonRow > button { flex: 1 1 calc(50% - 8px); }
   .coordinateGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .answerHeader { flex-wrap: wrap; gap: 8px; }

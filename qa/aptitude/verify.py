@@ -633,7 +633,19 @@ async def main():
                 for width in [375, 768, 1440]:
                     await page.set_viewport_size({'width': width, 'height': 1000})
                     await asyncio.sleep(.1)
-                    assert await page.evaluate('document.documentElement.scrollWidth <= innerWidth+1'), f'Horizontal overflow {theme}/{width}'
+                    fits_viewport = await page.evaluate('document.documentElement.scrollWidth <= innerWidth+1')
+                    if not fits_viewport:
+                        report['overflow'] = await page.evaluate('''() => ({
+                            viewportWidth: innerWidth, scrollWidth: document.documentElement.scrollWidth,
+                            elements: [...document.querySelectorAll('body *')].flatMap(element => {
+                                const bounds = element.getBoundingClientRect();
+                                if (!bounds.width || bounds.right <= innerWidth + 1) return [];
+                                return [{ tag: element.tagName, className: String(element.className),
+                                    role: element.getAttribute('role'), label: element.getAttribute('aria-label'),
+                                    left: Math.round(bounds.left), right: Math.round(bounds.right), width: Math.round(bounds.width) }];
+                            }).slice(-20)
+                        })''')
+                    assert fits_viewport, f'Horizontal overflow {theme}/{width}: {report.get("overflow")}'
                     await expect(page.get_by_role('button', name='Upload screenshot', exact=True)).to_be_visible()
                     report['layouts'].append({'theme': theme, 'width': width, 'passed': True})
                     if width in [375, 1440]:
