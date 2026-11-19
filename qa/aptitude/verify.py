@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 import pathlib
+import re
 import time
 from playwright.async_api import Error as PlaywrightError, async_playwright, expect
 
@@ -106,6 +107,8 @@ def comparison_response_for(body, decision):
             candidates.append(candidate)
             continue
         observation = {key: copy.deepcopy(base[key]) for key in ['category', 'status', 'question', 'answer', 'message']}
+        if decision == 'evidence_mismatch' and index == 1:
+            observation['question']['stem'] = 'A team completed 72 tasks before and 90 after. What is the percentage increase?'
         for option in observation['question']['options']:
             option['id'] = f'{index}-{option["id"]}'
         wrong = (decision == 'disagreement' and index == 1) or (decision == 'majority' and index == 2)
@@ -134,7 +137,7 @@ def comparison_response_for(body, decision):
                        'verification': {'method': 'none', 'outcome': 'not_run', 'notes': []}})
     result['durationMs'] = 0
     result['comparison'] = {
-        'decision': decision, 'selectedModelId': selected['modelId'] if selected else None,
+        'decision': 'disagreement' if decision == 'evidence_mismatch' else decision, 'selectedModelId': selected['modelId'] if selected else None,
         'agreementCount': 2 if resolved else 1,
         'notes': ['Sample model responses for this screen preview. No live provider calls or model latency benchmark.',
                   'Agreement does not prove correctness. Models may share the same reading or reasoning mistake.'],
@@ -204,7 +207,8 @@ async def main():
                 ]
                 assert body.get('strategy', 'single') in ['single', 'compare']
                 assert body['image'].startswith('data:image/')
-                requests.append({'captureId': body['captureId'], 'version': body['questionVersion'], 'number': state['number'], 'strategy': body.get('strategy', 'single'), 'at': time.monotonic()})
+                requests.append({'captureId': body['captureId'], 'version': body['questionVersion'], 'number': state['number'], 'strategy': body.get('strategy', 'single'),
+                                 'imageHash': hashlib.sha256(base64.b64decode(body['image'].split(',', 1)[1])).hexdigest(), 'at': time.monotonic()})
                 mode, number, delay = state['status'], state['number'], state['delay']
                 comparison = state['comparison']
                 if delay:
@@ -259,7 +263,18 @@ async def main():
             assert choices == expected_choices, f'History must contain the uploaded and original captures in newest-first order: {report["uploadedHistory"]}'
             await history_select.select_option(choices[-1])
             await expect(page.get_by_role('button', name='Follow latest', exact=True)).to_be_visible()
+            saved_preview = page.get_by_alt_text('Screenshot for selected saved capture', exact=True)
+            await expect(saved_preview).to_have_attribute('src', sample)
+            await page.get_by_role('button', name='Enlarge capture', exact=True).click()
+            inspector = page.get_by_role('dialog')
+            await expect(inspector).to_be_visible()
+            await expect(inspector.get_by_alt_text('Enlarged exact capture', exact=True)).to_have_attribute('src', sample)
+            await inspector.get_by_role('button', name='Actual pixels', exact=True).click()
+            await expect(inspector.get_by_role('button', name='Actual pixels', exact=True)).to_have_attribute('aria-pressed', 'true')
+            await inspector.get_by_role('button', name='Close', exact=True).click()
+            await expect(inspector).to_have_count(0)
             report['checks'].append('Real image upload, bounded question history and explicit history pinning')
+            report['checks'].append('Enlarged saved capture uses the exact associated image and supports Actual pixels')
 
             state['number'] = 1
             await page.get_by_role('button', name='Share screen', exact=True).click()
@@ -268,12 +283,18 @@ async def main():
             await page.get_by_role('button', name='Start automatic capture', exact=True).click()
             await wait_for_requests(baseline + 1)
             await expect(page.get_by_role('button', name='Follow latest', exact=True)).to_be_visible()
+            await expect(saved_preview).to_have_attribute('src', sample)
+            saved_hash = hashlib.sha256(base64.b64decode(sample.split(',', 1)[1])).hexdigest()
+            assert requests[-1]['imageHash'] != saved_hash, 'New automatic screen capture unexpectedly reused the old practice image'
             await page.get_by_role('button', name='Follow latest', exact=True).click()
             await expect(page.get_by_role('heading', name='B — 25%', exact=True)).to_be_visible()
+            latest_image = await preview.get_attribute('src')
+            assert hashlib.sha256(base64.b64decode(latest_image.split(',', 1)[1])).hexdigest() == requests[-1]['imageHash'], 'Preview must match the currently displayed capture, including after Follow latest'
             count = len(requests)
             await asyncio.sleep(1.5)
             assert len(requests) == count, 'Unchanged screen caused a duplicate request'
             report['checks'].append('Actual video/canvas sampler auto-captures a stable screen once; history pin does not stop capture')
+            report['checks'].append('Pinned history preview stays with its old answer while a different image is analyzed; Follow latest restores the new image')
 
             changed_at = time.monotonic()
             state['number'] = 2
@@ -301,6 +322,30 @@ async def main():
             await click_for_request(page.get_by_role('button', name='Retry this capture', exact=True))
             await expect(page.get_by_role('heading', name='B — 100%', exact=True)).to_be_visible()
             assert len(requests) == count + 2, 'Explicit retry should force a fresh request'
+            crop_request_count = len(requests)
+            await page.get_by_role('button', name='Select question area', exact=True).click()
+            crop_dialog = page.get_by_role('dialog', name='Select question area', exact=True)
+            await expect(crop_dialog).to_be_visible()
+            surface = crop_dialog.get_by_role('region', name='Question area selection', exact=True)
+            bounds = await surface.bounding_box()
+            assert bounds and bounds['width'] > 0 and bounds['height'] > 0
+            await page.mouse.move(bounds['x'] + bounds['width'] * .05, bounds['y'] + bounds['height'] * .10)
+            await page.mouse.down()
+            await page.mouse.move(bounds['x'] + bounds['width'] * .95, bounds['y'] + bounds['height'] * .95, steps=5)
+            await page.mouse.up()
+            await expect(crop_dialog.get_by_role('spinbutton', name='Width %', exact=True)).to_have_value('90')
+            await expect(crop_dialog.get_by_role('spinbutton', name='Height %', exact=True)).to_have_value('85')
+            # Exact values make the applied output dimension check independent of fractional pointer pixels.
+            for label, value in [('Left %', '10'), ('Top %', '10'), ('Width %', '80'), ('Height %', '80')]:
+                await crop_dialog.get_by_role('spinbutton', name=label, exact=True).fill(value)
+            await crop_dialog.get_by_role('button', name='Use selected area', exact=True).click()
+            await expect(crop_dialog).to_have_count(0)
+            await expect(preview).to_be_visible()
+            await preview.evaluate('(image) => image.decode()')
+            dimensions = await preview.evaluate('(image) => ({ width: image.naturalWidth, height: image.naturalHeight })')
+            assert dimensions == {'width': 800, 'height': 520}, dimensions
+            assert len(requests) == crop_request_count, 'Selecting or applying a crop must not send an analysis request'
+            report['checks'].append('Visual crop dialog supports dragging and percentages, preserves crop dimensions, and applies without a provider request')
             await page.get_by_role('button', name='Stop sharing', exact=True).click()
             assert await page.evaluate('window.__aptitudeScreen.liveTracks()') == 0
             assert (await page.evaluate('window.__aptitudeScreen.calls()'))['microphone'] == 0
@@ -356,13 +401,21 @@ async def main():
             await click_for_request(page.get_by_role('button', name='Retry this capture', exact=True))
             await expect(comparison.get_by_role('heading', name='Models disagree', exact=True)).to_be_visible()
             assert await page.get_by_text('Suggested answer', exact=True).count() == 0
-            await expect(comparison.get_by_role('article', name='anthropic:claude-sonnet-4-5', exact=True).get_by_text('B — 25%', exact=True)).to_be_visible()
-            await expect(comparison.get_by_role('article', name='openai:gpt-4.1', exact=True).get_by_text('A — 20%', exact=True)).to_be_visible()
+            await expect(comparison.get_by_role('article', name='anthropic:claude-sonnet-4-5', exact=True).locator('p').filter(has_text=re.compile(r'^B — 25%$'))).to_be_visible()
+            await expect(comparison.get_by_role('article', name='openai:gpt-4.1', exact=True).locator('p').filter(has_text=re.compile(r'^A — 20%$'))).to_be_visible()
             await page.set_viewport_size({'width': 1440, 'height': 1000})
             if await page.evaluate('document.documentElement.classList.contains("lt-dark")'):
                 await page.get_by_role('button', name='Switch to light mode', exact=True).click()
             await comparison.screenshot(path=str(OUT / 'aptitude-comparison-disagreement.png'))
             report['checks'].append('A one-to-one split withholds recommendation and exposes both explanations')
+
+            state['comparison'] = 'evidence_mismatch'
+            await click_for_request(page.get_by_role('button', name='Retry this capture', exact=True))
+            await expect(comparison.get_by_role('heading', name='Same answer, evidence needs review', exact=True)).to_be_visible()
+            assert await page.get_by_text('Suggested answer', exact=True).count() == 0
+            for model in ['anthropic:claude-sonnet-4-5', 'openai:gpt-4.1']:
+                await expect(comparison.get_by_role('article', name=model, exact=True).locator('p').filter(has_text=re.compile(r'^B — 25%$'))).to_be_visible()
+            report['checks'].append('Matching answer values with different source readings are labeled as evidence review, and no answer is promoted')
 
             state['comparison'] = 'insufficient'
             await click_for_request(page.get_by_role('button', name='Retry this capture', exact=True))
@@ -376,7 +429,7 @@ async def main():
             await expect(comparison.get_by_role('heading', name='Majority agreement', exact=True)).to_be_visible()
             await expect(page.get_by_role('heading', name='B — 25%', exact=True)).to_be_visible()
             await expect(comparison.get_by_role('article')).to_have_count(3)
-            await expect(comparison.get_by_role('article', name='openai:gpt-4.1-mini', exact=True).get_by_text('A — 20%', exact=True)).to_be_visible()
+            await expect(comparison.get_by_role('article', name='openai:gpt-4.1-mini', exact=True).locator('p').filter(has_text=re.compile(r'^A — 20%$'))).to_be_visible()
             await expect(comparison.get_by_text('Sample model responses for this screen preview. No live provider calls or model latency benchmark.', exact=True)).to_be_visible()
             report['checks'].append('Two-to-one agreement is labeled as a majority; dissent and arithmetic-check limits remain visible')
 

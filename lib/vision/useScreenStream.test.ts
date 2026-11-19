@@ -1,6 +1,7 @@
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AptitudeCaptureDetector, createAptitudeCapture } from '@/lib/aptitude/captureDetector'
+import { MAX_APTITUDE_IMAGE_CHARS } from '@/lib/aptitude/schema'
 import { useScreenStream } from './useScreenStream'
 
 function deferred<T>() {
@@ -12,6 +13,7 @@ function deferred<T>() {
 class Track extends EventTarget {
   readyState = 'live'
   label = 'Practice question tab'
+  contentHint = ''
   stop = vi.fn(() => { this.readyState = 'ended' })
   end() { this.readyState = 'ended'; this.dispatchEvent(new Event('ended')) }
 }
@@ -68,10 +70,12 @@ function installCanvas() {
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(function (this: HTMLCanvasElement) {
     return contextFor(this)
   })
-  vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockImplementation(function (this: HTMLCanvasElement) {
+  vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockImplementation(function (this: HTMLCanvasElement, type = 'image/png') {
     const raster = rasterFor(this)
     encoded.push({ ...raster, pixels: raster.pixels.slice() })
-    return `data:image/jpeg;base64,${btoa(String.fromCharCode(...raster.pixels))}`
+    let binary = ''
+    for (let offset = 0; offset < raster.pixels.length; offset += 8192) binary += String.fromCharCode(...raster.pixels.subarray(offset, offset + 8192))
+    return `data:${type};base64,${btoa(binary)}`
   })
 }
 
@@ -92,6 +96,27 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('screen media ownership', () => {
+  it('requests source detail only for the Aptitude workflow while keeping other vision consumers unchanged', async () => {
+    const track = new Track()
+    getDisplayMedia.mockResolvedValue(stream(track))
+    const regular = renderHook(() => useScreenStream())
+    await act(async () => regular.result.current.start())
+    expect(getDisplayMedia).toHaveBeenLastCalledWith({ video: true, audio: false })
+    expect(track.contentHint).toBe('')
+    regular.unmount()
+
+    const detailedTrack = new Track()
+    getDisplayMedia.mockResolvedValue(stream(detailedTrack))
+    const detailed = renderHook(() => useScreenStream({ preferNativeResolution: true }))
+    await act(async () => detailed.result.current.start())
+    expect(getDisplayMedia).toHaveBeenLastCalledWith({ video: {
+      width: { ideal: 4096 }, height: { ideal: 4096 },
+      frameRate: { ideal: 5, max: 10 }, resizeMode: { ideal: 'none' },
+    }, audio: false })
+    expect(detailedTrack.contentHint).toBe('text')
+    expect(detailed.result.current.sharing).toBe(true)
+  })
+
   it('opens one picker and retires a permission grant that arrives after Stop', async () => {
     const permission = deferred<MediaStream>()
     const track = new Track()
@@ -177,6 +202,38 @@ describe('screen media ownership', () => {
 })
 
 describe('independent aptitude screen samples', () => {
+  it('preserves small marks in a source wider than the old 2048px limit', async () => {
+    videoRaster = { width: 3000, height: 60, pixels: new Uint8ClampedArray(3000 * 60 * 4) }
+    for (let y = 0; y < videoRaster.height; y++) for (let x = 0; x < videoRaster.width; x++) paint(videoRaster, x, y, 255)
+    // Adjacent one-pixel marks can distinguish visual answer choices. Their
+    // original coordinates and color must survive the capture path.
+    videoRaster.pixels.set([0, 150, 80, 255], (30 * 3000 + 2501) * 4)
+    videoRaster.pixels.set([25, 25, 25, 255], (30 * 3000 + 2502) * 4)
+    const { result } = renderHook(() => useScreenStream())
+    await act(async () => result.current.start())
+    const captured = result.current.sampleFrame()
+    if (captured.kind !== 'available') throw new Error('Expected a readable native-size capture')
+    expect([captured.width, captured.height]).toEqual([3000, 60])
+    expect(captured.image).toMatch(/^data:image\/png;base64,/)
+    expect(encoded[0].pixels).toEqual(videoRaster.pixels)
+  })
+
+  it('can open a local area-selector preview when the full-resolution analysis capture is too large', async () => {
+    videoRaster = { width: 3000, height: 60, pixels: new Uint8ClampedArray(3000 * 60 * 4).fill(255) }
+    vi.mocked(HTMLCanvasElement.prototype.toDataURL).mockImplementation(function (this: HTMLCanvasElement, type = 'image/png') {
+      return `data:${type};base64,${this.width > 2000 ? 'A'.repeat(MAX_APTITUDE_IMAGE_CHARS) : 'AAAA'}`
+    })
+    const { result } = renderHook(() => useScreenStream())
+    await act(async () => result.current.start())
+    expect(result.current.sampleFrame().kind).toBe('unavailable')
+    const preview = result.current.sampleFrame({ previewOnly: true })
+    if (preview.kind !== 'available') throw new Error('Expected a local selection preview')
+    expect([preview.width, preview.height]).toEqual([1536, 31])
+    const question = result.current.sampleFrame({ crop: { x: 0.25, y: 0, width: 0.5, height: 1 } })
+    if (question.kind !== 'available') throw new Error('Expected a readable question crop')
+    expect([question.width, question.height]).toEqual([1500, 60])
+  })
+
   it('returns repeatable manual captures without consuming the legacy difference gate', async () => {
     const { result } = renderHook(() => useScreenStream())
     expect(result.current.sampleFrame().kind).toBe('unavailable')
@@ -232,7 +289,7 @@ describe('independent aptitude screen samples', () => {
     expect(result.current.sampleFrame({ crop: { x: 0, y: 0, width: 0, height: 1 } }).kind).toBe('unavailable')
     expect(result.current.sampleFrame({ masks: [{ x: 0, y: 0, width: 0, height: 1 }] }).kind).toBe('unavailable')
     expect(encoded).toHaveLength(0)
-    vi.mocked(HTMLCanvasElement.prototype.toDataURL).mockReturnValue(`data:image/jpeg;base64,${'a'.repeat(1_150_001)}`)
+    vi.mocked(HTMLCanvasElement.prototype.toDataURL).mockImplementation((type) => `data:${type};base64,${'a'.repeat(MAX_APTITUDE_IMAGE_CHARS)}`)
     const tooLarge = result.current.sampleFrame()
     expect(tooLarge.kind).toBe('unavailable')
     if (tooLarge.kind === 'unavailable') expect(tooLarge.reason).toContain('smaller question area')

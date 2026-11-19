@@ -1,10 +1,25 @@
 import type { AptitudeCategory, AptitudeStatus } from '@/lib/aptitude/schema'
+import { APTITUDE_VISUAL_FIXTURES } from './visualFixtures'
+
+export type AptitudeFixtureDiagram = 'rotation' | 'count_pattern' | 'table' | 'star_points' | 'star_increments' | 'grid_rotation' | 'grid_xor' | 'spatial_ambiguous'
+export type AptitudeEvidenceCheck = {
+  id: string
+  description: string
+  /** Diagnostic rubric only. These patterns never enter the provider request. */
+  allPatterns: string[]
+  forbiddenPatterns?: string[]
+}
 
 export type AptitudeFixture = {
   id: string
   split: 'development' | 'held_out'
-  view: { lines: string[]; diagram?: 'rotation' | 'count_pattern' | 'table'; incomplete?: boolean }
-  expected: { category: AptitudeCategory; status: AptitudeStatus; selectedLabels: string[]; criticalText: string[] }
+  view: { lines: string[]; diagram?: AptitudeFixtureDiagram; incomplete?: boolean; layout?: 'large_page' | 'cropped_choices' | 'obscured_diagram' }
+  expected: { category: AptitudeCategory; status: AptitudeStatus; selectedLabels: string[]; criticalText: string[];
+    /** Exact visible option text, when it is textual rather than a diagram description. */
+    optionTextByLabel?: Record<string, string>;
+    evidenceChecks?: AptitudeEvidenceCheck[];
+    calculationValue?: number;
+  }
 }
 /** Owned synthetic questions. Expected answers stay outside the image and provider prompt. */
 export const APTITUDE_FIXTURES: readonly AptitudeFixture[] = [
@@ -20,4 +35,5 @@ export const APTITUDE_FIXTURES: readonly AptitudeFixture[] = [
   { id: 'ambiguous-instruction', split: 'held_out', view: { lines: ['All the rules of this problem are shown here.', 'Start at 3. Apply EITHER ADD 2 OR MULTIPLY BY 2.', 'Both operations are permitted. No other rules apply.', 'Which SINGLE next value is uniquely determined?', 'A. 5     B. 6'] }, expected: { category: 'logical', status: 'ambiguous', selectedLabels: [], criticalText: ['ADD 2', 'MULTIPLY BY 2'] } },
   { id: 'personality-boundary', split: 'held_out', view: { lines: ['About you: I enjoy leading large groups.', 'Choose the response that best describes YOU.', 'A. Strongly disagree     B. Disagree', 'C. Neutral     D. Agree     E. Strongly agree'] }, expected: { category: 'personality', status: 'unsupported', selectedLabels: [], criticalText: [] } },
   { id: 'situational-boundary', split: 'held_out', view: { lines: ['At work a teammate misses an internal deadline.', 'Rank how you would respond to the situation.', 'A. Discuss the cause privately.', 'B. Escalate to the manager immediately.', 'C. Finish the work yourself without telling anyone.'] }, expected: { category: 'situational_judgment', status: 'unsupported', selectedLabels: [], criticalText: [] } },
+  ...APTITUDE_VISUAL_FIXTURES,
 ]

@@ -40,4 +40,18 @@ describe('aptitude wire contract', () => {
     expect(() => parseAptitudeRequest({ ...TEST_REQUEST, strategy: 'automatic-race' })).toThrow()
     expect(() => parseAptitudeRequest({ ...TEST_REQUEST, strategy: null })).toThrow()
   })
+  it('preserves old answers while validating optional numeric pattern evidence', () => {
+    expect(parseAptitudeObservation(solvedObservation()).answer).not.toHaveProperty('numericPattern')
+    const item = solvedObservation()
+    item.answer!.numericPattern = null
+    expect(parseAptitudeObservation(item).answer!.numericPattern).toBeNull()
+    item.answer!.numericPattern = { observedValues: [3, 7, 13, 21], rule: 'constant_second_difference' }
+    expect(parseAptitudeObservation(item).answer!.numericPattern).toEqual(item.answer!.numericPattern)
+    item.answer!.numericPattern.observedValues = [3, 7, 13]
+    expect(() => parseAptitudeObservation(item)).toThrow(/enough observed values/)
+    item.answer!.numericPattern.observedValues = [1, 2, 3, 1e13]
+    expect(() => parseAptitudeObservation(item)).toThrow(/precision or size/)
+    item.answer!.numericPattern.observedValues = [1, 2, 3, Infinity]
+    expect(() => parseAptitudeObservation(item)).toThrow(/numeric pattern value/)
+  })
 })

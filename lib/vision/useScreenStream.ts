@@ -1,6 +1,7 @@
 'use client'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { fingerprintFromRgba, normalizeRegion, type NormalizedRegion, type ScreenSample } from '@/lib/aptitude/captureDetector'
+import { AptitudeCaptureEncodingError, aptitudeCaptureSize, encodeAptitudeCanvas } from '@/lib/aptitude/captureEncoding'
 
 // Screen capture for the copilot's vision (Phase 2). Opens getDisplayMedia video
 // (the track useMicStream deliberately discards), holds it in an offscreen
@@ -15,9 +16,18 @@ const LONG_EDGE = 1024
 const JPEG_QUALITY = 0.6
 const DIFF_THUMB = 64 // luma thumbnail size for the perceptual diff
 const DIFF_THRESHOLD = 0.02 // mean-abs-diff (0..1) below which the screen is "unchanged"
-const APTITUDE_LONG_EDGE = 2048
 const APTITUDE_FINGERPRINT_EDGE = 512
-const MAX_APTITUDE_IMAGE_CHARS = 1_150_000
+
+type ScreenStreamOptions = { preferNativeResolution?: boolean }
+
+// Soft constraints apply after the user chooses the source. Unlike min/exact,
+// they do not reject smaller screens or narrow the browser's source picker.
+// resizeMode is in the Screen Capture specification, but not all DOM typings
+// or browsers expose it yet; unsupported hints are ignored by the browser.
+const DETAILED_SCREEN_CONSTRAINTS: MediaTrackConstraints & { resizeMode: ConstrainDOMString } = {
+  width: { ideal: 4096 }, height: { ideal: 4096 },
+  frameRate: { ideal: 5, max: 10 }, resizeMode: { ideal: 'none' },
+}
 
 type ScreenRun = {
   stream: MediaStream | null
@@ -33,7 +43,7 @@ function disposeRun(run: ScreenRun) {
   run.stream = null
 }
 
-export function useScreenStream() {
+export function useScreenStream({ preferNativeResolution = false }: ScreenStreamOptions = {}) {
   const [sharing, setSharing] = useState(false)
   const [starting, setStarting] = useState(false)
   const [sourceLabel, setSourceLabel] = useState<string | null>(null)
@@ -81,13 +91,20 @@ export function useScreenStream() {
     setError(null)
     setStarting(true)
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: preferNativeResolution ? DETAILED_SCREEN_CONSTRAINTS : true, audio: false,
+      })
       run.stream = stream
       // Stop while the browser picker is pending must retire a late grant,
       // without touching a replacement session that the user already started.
       if (!current()) { disposeRun(run); return }
       const track = stream.getVideoTracks()[0]
       if (!track) throw new Error('No screen video track')
+      if (preferNativeResolution && 'contentHint' in track) {
+        // The browser may ignore this hint. A missing implementation must not
+        // turn an otherwise valid sharing grant into a failed session.
+        try { track.contentHint = 'text' } catch { /* optional browser hint */ }
+      }
       streamRef.current = stream
       const video = document.createElement('video')
       run.video = video
@@ -109,7 +126,7 @@ export function useScreenStream() {
       setError(e instanceof Error && e.name === 'NotAllowedError' ? null : 'Could not start screen sharing')
       stop()
     }
-  }, [stop])
+  }, [preferNativeResolution, stop])
 
   // Grab one downscaled JPEG. Returns null if unchanged since the last grab (MAD
   // gate) so the caller can skip a redundant vision call, or if not sharing.
@@ -161,7 +178,12 @@ export function useScreenStream() {
    * legacy chat/code difference gate. Excluded regions are blanked before both
    * fingerprinting and encoding, so the preview is exactly what is sent.
    */
-  const sampleFrame = useCallback((options?: { crop?: NormalizedRegion; masks?: NormalizedRegion[] }): ScreenSample => {
+  const sampleFrame = useCallback((options?: {
+    crop?: NormalizedRegion
+    masks?: NormalizedRegion[]
+    /** Local area-selector image only. Resample without this flag before analysis. */
+    previewOnly?: boolean
+  }): ScreenSample => {
     const capturedAt = Date.now()
     const unavailable = (reason: string): ScreenSample => ({ kind: 'unavailable', capturedAt, reason })
     const video = videoRef.current
@@ -175,12 +197,22 @@ export function useScreenStream() {
     const sh = Math.max(1, Math.min(video.videoHeight - sy, Math.ceil(crop.height * video.videoHeight)))
 
     try {
-      const scale = Math.min(1, APTITUDE_LONG_EDGE / Math.max(sw, sh))
-      let canvas = document.createElement('canvas')
-      canvas.width = Math.max(1, Math.round(sw * scale))
-      canvas.height = Math.max(1, Math.round(sh * scale))
+      const size = aptitudeCaptureSize(sw, sh)
+      if (options?.previewOnly) {
+        // A whole high-DPI desktop may exceed the analysis payload budget.
+        // Keep the local crop selector usable so the user can select a readable
+        // question region, which is then captured again at full detail.
+        const previewScale = Math.min(1, 1536 / Math.max(size.width, size.height))
+        size.width = Math.max(1, Math.round(size.width * previewScale))
+        size.height = Math.max(1, Math.round(size.height * previewScale))
+      }
+      const canvas = document.createElement('canvas')
+      canvas.width = size.width
+      canvas.height = size.height
       const context = canvas.getContext('2d')
       if (!context) return unavailable('Screen capture is unavailable in this browser.')
+      context.imageSmoothingEnabled = true
+      context.imageSmoothingQuality = 'high'
       context.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height)
       context.fillStyle = '#ffffff'
       for (const mask of options?.masks ?? []) {
@@ -209,26 +241,11 @@ export function useScreenStream() {
       const rgba = fingerprintContext.getImageData(0, 0, fingerprintCanvas.width, fingerprintCanvas.height).data
       const fingerprint = fingerprintFromRgba(rgba, fingerprintCanvas.width, fingerprintCanvas.height)
 
-      // Keep text/figures readable while respecting the API's bounded image
-      // input. Refuse an oversized image instead of silently omitting it.
-      for (let attempt = 0; attempt < 3; attempt++) {
-        const image = canvas.toDataURL('image/jpeg', 0.9 - attempt * 0.04)
-        if (image.length <= MAX_APTITUDE_IMAGE_CHARS && image.startsWith('data:image/')) {
-          return { kind: 'available', image, capturedAt, width: canvas.width, height: canvas.height,
-            sourceHash: fingerprint.hash, fingerprint }
-        }
-        if (attempt < 2) {
-          const smaller = document.createElement('canvas')
-          smaller.width = Math.max(1, Math.round(canvas.width * 0.8))
-          smaller.height = Math.max(1, Math.round(canvas.height * 0.8))
-          const smallerContext = smaller.getContext('2d')
-          if (!smallerContext) break
-          smallerContext.drawImage(canvas, 0, 0, smaller.width, smaller.height)
-          canvas = smaller
-        }
-      }
-      return unavailable('The capture is too large. Select a smaller question area.')
-    } catch {
+      const image = encodeAptitudeCanvas(canvas)
+      return { kind: 'available', image, capturedAt, width: canvas.width, height: canvas.height,
+        sourceHash: fingerprint.hash, fingerprint }
+    } catch (cause) {
+      if (cause instanceof AptitudeCaptureEncodingError) return unavailable(cause.message)
       return unavailable('Could not read the current screen. Try sharing it again.')
     }
   }, [])

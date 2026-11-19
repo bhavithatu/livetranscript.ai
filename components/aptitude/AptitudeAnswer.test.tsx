@@ -4,6 +4,7 @@ import { parseAptitudeResult, type AptitudeResult } from '@/lib/aptitude/schema'
 import type { AptitudeSessionEntry } from '@/lib/aptitude/useAptitudeSession'
 import { AptitudeAnswer } from './AptitudeAnswer'
 import { comparisonFixture } from './comparisonTestFixtures'
+import { comparisonReviewQuestion, selectAptitudeComparison } from '@/lib/aptitude/comparison'
 
 const base: AptitudeResult = {
   schemaVersion: 1, captureId: 'sample', questionVersion: 1, questionId: 'a'.repeat(64), sourceHash: 'b'.repeat(64),
@@ -38,12 +39,12 @@ describe('model comparison results', () => {
     expect(selected.getAttribute('data-selected')).toBe('true')
     expect(within(selected).getByText('Answer shown')).toBeTruthy()
     expect(within(selected).getByText('Response time 2.2 s')).toBeTruthy()
-    expect(within(selected).getByText(/Image reading, formula choice, units and meaning still need review/)).toBeTruthy()
+    expect(within(selected).getByText(/does not verify image reading, rule choice/)).toBeTruthy()
     expect(within(region).getByText(/does not prove the answer is correct/)).toBeTruthy()
     if (decision === 'majority') {
       const other = within(region).getByRole('article', { name: 'openai:test-model-c' })
       expect(other.getAttribute('data-selected')).toBe('false')
-      expect(within(other).getByText('A — 20%')).toBeTruthy()
+      expect(within(other).getByText('A — 20%', { selector: 'p' })).toBeTruthy()
       fireEvent.click(within(other).getByText('Explanation & evidence'))
       expect((other.querySelector('details') as HTMLDetailsElement).open).toBe(true)
       expect(within(other).getByText('Divide by the later value: 18 ÷ 90 × 100 = 20%.')).toBeTruthy()
@@ -58,8 +59,8 @@ describe('model comparison results', () => {
     expect(within(region).getByText(/No answer is selected/)).toBeTruthy()
     const first = within(region).getByRole('article', { name: 'openai:test-model-a' })
     const second = within(region).getByRole('article', { name: 'anthropic:test-model-b' })
-    expect(within(first).getByText('B — 25%')).toBeTruthy()
-    expect(within(second).getByText('A — 20%')).toBeTruthy()
+    expect(within(first).getByText('B — 25%', { selector: 'p' })).toBeTruthy()
+    expect(within(second).getByText('A — 20%', { selector: 'p' })).toBeTruthy()
     expect((first.querySelector('details') as HTMLDetailsElement).open).toBe(true)
     expect((second.querySelector('details') as HTMLDetailsElement).open).toBe(true)
     expect(region.querySelector('[data-selected="true"]')).toBeNull()
@@ -71,7 +72,7 @@ describe('model comparison results', () => {
     const region = screen.getByRole('region', { name: 'Model comparison' })
     expect(within(region).getByRole('heading', { name: 'Comparison incomplete' })).toBeTruthy()
     expect(screen.queryByText('Suggested answer')).toBeNull()
-    expect(within(region).getByText('B — 25%')).toBeTruthy()
+    expect(within(region).getByText('B — 25%', { selector: 'p' })).toBeTruthy()
     const timedOut = within(region).getByRole('article', { name: 'anthropic:test-model-b' })
     expect(within(timedOut).getByText('Timed out')).toBeTruthy()
     expect(within(timedOut).getByText('Response time 25.0 s')).toBeTruthy()
@@ -85,7 +86,32 @@ describe('model comparison results', () => {
     view.rerender(<AptitudeAnswer entry={entry(allFailed)} index={0} {...actions} />)
     expect(screen.getByRole('alert').textContent).toBe('No models completed.')
     expect(screen.getByText('The provider could not complete the request.')).toBeTruthy()
-    expect(screen.queryByText('B — 25%')).toBeNull()
+    expect(screen.queryByText('B — 25%', { selector: 'p' })).toBeNull()
     expect(screen.getByRole('button', { name: 'Retry this capture' })).toBeTruthy()
+  })
+
+  it('distinguishes matching values from reconciled evidence without publishing a recommendation', () => {
+    const result = comparisonFixture(base)
+    const candidates = result.comparison!.candidates
+    candidates[1].observation!.question!.stem = 'A different reading of the question.'
+    const { comparison } = selectAptitudeComparison(candidates)
+    const review = comparisonReviewQuestion(candidates)
+    const unresolved: AptitudeResult = { ...result, ...review, status: 'ambiguous', answer: null, questionId: null, model: null, provider: null,
+      message: 'The evidence needs review.', verification: { method: 'none', outcome: 'not_run', notes: [] }, comparison }
+    render(<AptitudeAnswer entry={entry(unresolved)} index={0} {...actions} />)
+    expect(screen.getByRole('heading', { name: 'Same answer, evidence needs review' })).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'Models disagree' })).toBeNull()
+    expect(screen.queryByText('Suggested answer')).toBeNull()
+    expect(screen.getByText(/The answer values match, but/)).toBeTruthy()
+  })
+
+  it('does not duplicate an unlabeled numeric choice or call arithmetic a correctness check', () => {
+    const result = structuredClone(base)
+    result.question!.options[1] = { id: 'b', label: '25%', text: '25%' }
+    render(<AptitudeAnswer entry={entry(result)} index={0} {...actions} />)
+    expect(screen.getByRole('heading', { name: '25%' })).toBeTruthy()
+    expect(screen.queryByText('25% — 25%')).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Calculation matches' })).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'Check passed' })).toBeNull()
   })
 })

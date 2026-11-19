@@ -25,6 +25,18 @@
 .sectionHeading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
 .badge { font-size: 10px; line-height: 1.5; background: var(--surface-soft, var(--paper)); color: var(--muted); border: 1px solid var(--line); padding: 3px 8px; border-radius: 20px; }
 .captureImage { display: block; width: 100%; height: auto; max-height: 440px; object-fit: contain; border-radius: 10px; border: 1px solid var(--line); background: white; margin: 12px 0; }
+.previewIdentity, .previewTip { margin-top: 12px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface-soft, var(--paper)); font-size: 12px; line-height: 1.65; color: var(--ink); }
+.captureDialog { position: fixed; inset: 0; margin: auto; width: min(1180px, 96vw); max-width: 96vw; max-height: 94vh; overflow: auto; padding: clamp(16px, 3vw, 28px); border: 1px solid var(--line); border-radius: 16px; background: var(--reader); color: var(--ink); }
+.captureDialog::backdrop { background: rgb(0 0 0 / .65); }
+.dialogHeading { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; margin-bottom: 16px; }
+.dialogHeading h2 { font-size: 20px; font-weight: 650; }
+.dialogHeading p { max-width: 760px; margin-top: 8px; color: var(--muted); font-size: 13px; line-height: 1.65; }
+.dialogHeading > button, .captureDialog button { min-height: 42px; padding: 10px 14px; border-radius: 8px; white-space: nowrap; }
+.inspectionViewport { max-height: 61vh; overflow: auto; margin-top: 16px; border: 1px solid var(--line); background: var(--surface-soft, var(--paper)); padding: 8px; }
+.inspectionSurface, .selectionSurface { position: relative; margin: 0 auto; }
+.selectionSurface { cursor: crosshair; touch-action: none; user-select: none; overflow: hidden; }
+.inspectionImage { display: block; width: 100%; height: auto; max-width: none; background: white; }
+.selectionBox { position: absolute; pointer-events: none; border: 2px solid #12a58a; background: rgb(18 165 138 / .06); box-shadow: 0 0 0 10000px rgb(0 0 0 / .48); }
 .emptyPreview { min-height: 160px; border: 1px dashed var(--line-strong, var(--line)); background: var(--surface-soft, var(--paper)); border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 18px; text-align: center; }
 .emptyPreview svg { color: var(--muted); }
 .emptyPreview p { font-size: 13px; font-weight: 550; }

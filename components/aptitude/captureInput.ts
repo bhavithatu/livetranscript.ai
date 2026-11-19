@@ -1,7 +1,7 @@
 import type { AptitudeCapture } from '@/lib/aptitude/captureDetector'
+import { aptitudeCaptureSize, encodeAptitudeCanvas } from '@/lib/aptitude/captureEncoding'
 
 const MAX_UPLOAD_BYTES = 4_400_000
-const MAX_IMAGE_LENGTH = 1_150_000
 
 function abortError() { return new DOMException('Image loading cancelled', 'AbortError') }
 
@@ -45,18 +45,18 @@ export async function readCaptureFile(file: File, signal: AbortSignal): Promise<
   })
   if (signal.aborted) throw abortError()
   if (!image.naturalWidth || !image.naturalHeight) throw new Error('The screenshot is empty.')
-  const scale = Math.min(1, 1800 / Math.max(image.naturalWidth, image.naturalHeight))
+  const size = aptitudeCaptureSize(image.naturalWidth, image.naturalHeight)
   const canvas = document.createElement('canvas')
-  canvas.width = Math.max(1, Math.round(image.naturalWidth * scale))
-  canvas.height = Math.max(1, Math.round(image.naturalHeight * scale))
+  canvas.width = size.width
+  canvas.height = size.height
   const context = canvas.getContext('2d')
   if (!context) throw new Error('Image preview is unavailable in this browser.')
   context.fillStyle = '#ffffff'
   context.fillRect(0, 0, canvas.width, canvas.height)
+  context.imageSmoothingEnabled = true
+  context.imageSmoothingQuality = 'high'
   context.drawImage(image, 0, 0, canvas.width, canvas.height)
-  let data = canvas.toDataURL('image/jpeg', 0.88)
-  if (data.length > MAX_IMAGE_LENGTH) data = canvas.toDataURL('image/jpeg', 0.65)
-  if (data.length > MAX_IMAGE_LENGTH) throw new Error('This screenshot has too much detail. Crop to the complete question and try again.')
+  const data = encodeAptitudeCanvas(canvas)
   if (signal.aborted) throw abortError()
   return captureFromImage(data, canvas.width, canvas.height)
 }

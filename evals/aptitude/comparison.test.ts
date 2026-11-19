@@ -59,7 +59,7 @@ describe('bounded comparison evaluation planning (no model calls)', () => {
 })
 
 const score = (overrides: Partial<AptitudeScore> = {}): AptitudeScore => ({ schemaValid: true, categoryCorrect: true, statusCorrect: true,
-  answerCorrect: true, shouldAbstain: false, abstained: false, criticalTextCoverage: 1, ...overrides })
+  answerCorrect: true, shouldAbstain: false, abstained: false, criticalTextCoverage: 1, optionMappingCorrect: null, evidenceReview: null, ...overrides })
 const attempt = (overrides: Partial<ScoredEvaluationAttempt> = {}): ScoredEvaluationAttempt => ({
   expectedStatus: 'solved', outcome: 'complete', score: score(), comparisonScore: null, durationMs: 100, ...overrides,
 })

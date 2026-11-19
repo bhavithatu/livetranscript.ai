@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
 import type { AptitudeComparison as Comparison, AptitudeComparisonCandidate, AptitudeVerification } from '@/lib/aptitude/schema'
+import { comparisonAnswersMatch } from '@/lib/aptitude/comparison'
+import { formatAptitudeOption } from './formatOption'
 import styles from './AptitudeWorkspace.module.css'
 
 const DECISIONS = {
@@ -13,12 +15,12 @@ function modelName(candidate: AptitudeComparisonCandidate) {
 
 function Check({ verification }: { verification: AptitudeVerification }) {
   const title = verification.method === 'arithmetic'
-    ? verification.outcome === 'passed' ? 'Arithmetic check passed' : verification.outcome === 'disagreed' ? 'Arithmetic check needs review' : 'Arithmetic check not completed'
+    ? verification.outcome === 'passed' ? 'Calculation matches' : verification.outcome === 'disagreed' ? 'Calculation needs review' : 'Calculation not checked'
     : 'No independent correctness check'
   return <div className={styles.candidateCheck}>
     <p><strong>{title}</strong></p>
     <p>{verification.method === 'arithmetic'
-      ? 'Checks the stated calculation and comparable values. Image reading, formula choice, units and meaning still need review.'
+      ? 'Arithmetic only. It does not verify image reading, rule choice or the final answer’s correctness.'
       : 'This response relies on the model’s reading and reasoning.'}</p>
     {verification.notes.length > 0 && <ul>{verification.notes.map((note, index) => <li key={index}>{note}</li>)}</ul>}
   </div>
@@ -28,7 +30,7 @@ function ModelCard({ candidate, selected, expanded }: { candidate: AptitudeCompa
   const observation = candidate.observation
   const answer = observation?.answer
   const choices = observation?.question?.options.filter((option) => answer?.selectedOptionIds.includes(option.id)) ?? []
-  const choice = choices.length ? choices.map((option) => `${option.label} — ${option.text}`).join(' · ')
+  const choice = choices.length ? choices.map(formatAptitudeOption).join(' · ')
     : answer?.value ? `${answer.value}${answer.unit ? ` ${answer.unit}` : ''}` : null
   const status = candidate.status === 'timed_out' ? 'Timed out' : candidate.status === 'failed' ? 'Failed'
     : observation?.status === 'needs_capture' ? 'Needs another capture' : observation?.status === 'ambiguous' ? 'Uncertain'
@@ -56,7 +58,7 @@ function ModelCard({ candidate, selected, expanded }: { candidate: AptitudeCompa
         <h5>Question read by this model</h5><p>{observation.question.stem}</p>
         {observation.question.instructions.length > 0 && <ul>{observation.question.instructions.map((item, index) => <li key={index}>{item}</li>)}</ul>}
         {observation.question.passage && <blockquote>{observation.question.passage}</blockquote>}
-        {observation.question.options.length > 0 && <ul>{observation.question.options.map((option) => <li key={option.id}><strong>{option.label}.</strong> {option.text}</li>)}</ul>}
+        {observation.question.options.length > 0 && <ul>{observation.question.options.map((option) => <li key={option.id}>{formatAptitudeOption(option)}</li>)}</ul>}
         {observation.question.missingEvidence.length > 0 && <><h5>Missing from this capture</h5><ul>{observation.question.missingEvidence.map((item, index) => <li key={index}>{item}</li>)}</ul></>}
       </>}
     </details>}
@@ -67,12 +69,15 @@ function ModelCard({ candidate, selected, expanded }: { candidate: AptitudeCompa
 export function AptitudeComparison({ comparison, children }: { comparison: Comparison; children?: ReactNode }) {
   const selected = comparison.candidates.find((candidate) => candidate.modelId === comparison.selectedModelId)
   const resolved = (comparison.decision === 'agreement' || comparison.decision === 'majority') && !!selected
+  const sameAnswerNeedsReview = comparison.decision === 'disagreement' && comparisonAnswersMatch(comparison.candidates)
   return <section className={styles.comparison} aria-label="Model comparison">
     <div className={styles.comparisonBanner} data-resolved={resolved}>
       <p className={styles.eyebrow}>Same capture · {comparison.candidates.length} models</p>
-      <h3>{DECISIONS[comparison.decision]}</h3>
+      <h3>{sameAnswerNeedsReview ? 'Same answer, evidence needs review' : DECISIONS[comparison.decision]}</h3>
       <p>{resolved
         ? `${comparison.agreementCount} of ${comparison.candidates.length} models support the same answer. The response shown below is from ${modelName(selected!)}.`
+        : sameAnswerNeedsReview
+          ? 'The answer values match, but the question, diagram evidence or option mapping could not be reconciled. No answer is selected; inspect the exact capture and both readings.'
         : comparison.decision === 'disagreement'
           ? 'No answer is selected. The models disagree; inspect their individual reasoning and the captured evidence.'
           : 'No answer is selected. Too few usable model results are available to compare.'}</p>

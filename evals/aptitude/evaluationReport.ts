@@ -51,6 +51,9 @@ export function aggregateAptitudeAttempts(group: readonly ScoredEvaluationAttemp
     },
     consensusWrongCount: comparisons.filter(score => score.consensusWrong).length,
     selectedAnswersCorrect: comparisons.filter(score => score.selectedAnswerCorrect).length,
+    evidenceReviewed: group.filter(attempt => valid(attempt) && !!attempt.score?.evidenceReview).length,
+    evidenceReviewFlagged: group.filter(attempt => valid(attempt) && attempt.score?.evidenceReview?.reviewRequired === true).length,
+    optionMappingFailures: group.filter(attempt => valid(attempt) && attempt.score?.optionMappingCorrect === false).length,
     p50Ms: percentile(group.flatMap(attempt => attempt.durationMs === null ? [] : [attempt.durationMs]), 0.5),
     p95Ms: percentile(group.flatMap(attempt => attempt.durationMs === null ? [] : [attempt.durationMs]), 0.95),
   }

@@ -16,8 +16,12 @@ function sourceKey(candidate: AptitudeComparisonCandidate): string | null {
   if (new Set(question.options.map(option => option.text)).size !== question.options.length || new Set(nonemptyLabels).size !== nonemptyLabels.length) return null
   const options = question.options.map(option => ({ label: canonicalAptitudeOptionLabel(option.label), text: option.text }))
     .sort((a,b) => a.label.localeCompare(b.label) || a.text.localeCompare(b.text))
+  // For diagram questions the literal stem often says only "Which pattern?".
+  // Matching that text and a final answer cannot corroborate incompatible pixels.
+  const visualEvidence = observation.category === 'abstract' || observation.category === 'spatial'
+    ? observation.answer?.evidence.map(item => item.trim().replace(/\s+/g, ' ')).sort() ?? [] : null
   return JSON.stringify({ category: observation.category, stem: question.stem, instructions: question.instructions,
-    passage: question.passage, responseType: question.responseType, options })
+    passage: question.passage, responseType: question.responseType, options, visualEvidence })
 }
 function answerKey(candidate: AptitudeComparisonCandidate): string | null {
   const answer = candidate.observation?.answer
@@ -35,6 +39,13 @@ const eligible = (candidate: AptitudeComparisonCandidate) => candidate.status ==
 const checked = (candidate: AptitudeComparisonCandidate) => candidate.verification?.method === 'arithmetic' && candidate.verification.outcome === 'passed' ? 1 : 0
 const CAUTION = 'Model agreement is not calibrated correctness. Models can share the same transcription or reasoning mistake.'
 
+/** Presentation only: matching answer values never relax the source agreement gate. */
+export function comparisonAnswersMatch(candidates: AptitudeComparisonCandidate[]): boolean {
+  const usable = candidates.filter(eligible)
+  const keys = usable.map(answerKey)
+  return usable.length >= 2 && keys.every(key => key !== null) && new Set(keys).size === 1
+}
+
 /** Deterministic corroboration, not a confidence ranking or an LLM judge. Safe for runtime wire validation. */
 export function selectAptitudeComparison(candidates: AptitudeComparisonCandidate[]): { comparison: AptitudeComparison; selected: AptitudeComparisonCandidate | null } {
   const finish = (decision: AptitudeComparison['decision'], count: number, notes: string[], selected: AptitudeComparisonCandidate | null = null) => ({
@@ -45,7 +56,7 @@ export function selectAptitudeComparison(candidates: AptitudeComparisonCandidate
   if (new Set(usable.map(candidate => `${candidate.provider}:${candidate.model}`)).size !== usable.length) return finish('insufficient', 0, ['The returned model identities are not distinct; repeated model output is not independent corroboration.'])
   const sources = usable.map(sourceKey)
   if (sources.some(key => key === null) || new Set(sources).size !== 1) return finish('disagreement', 0, [
-    'The models did not transcribe the same question evidence and complete option mapping, or repeated option text could not be mapped uniquely. No answer was selected.',
+    'The models did not transcribe the same question, visual evidence and complete option mapping, or repeated option text could not be mapped uniquely. No answer was selected.',
     'Comparison preserves literal source and option text. Even a benign paraphrase can require manual review.',
   ])
   const groups = new Map<string, AptitudeComparisonCandidate[]>()

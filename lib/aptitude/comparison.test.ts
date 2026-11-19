@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { selectAptitudeComparison } from './comparison'
+import { comparisonAnswersMatch, selectAptitudeComparison } from './comparison'
 import { parseAptitudeComparison, parseAptitudeResult, type AptitudeComparisonCandidate, type AptitudeObservation } from './schema'
 import { verifyAptitudeObservation } from './verify'
 import { solvedObservation } from './testFixtures'
@@ -107,6 +107,17 @@ describe('deterministic model comparison', () => {
   it('does not treat a repeated returned model identity as independent corroboration', () => {
     const first = candidate(1), second = candidate(2); second.model = first.model
     expect(selectAptitudeComparison([first, second]).comparison).toMatchObject({ decision: 'insufficient', agreementCount: 0, selectedModelId: null })
+  })
+  it('requires diagram evidence as well as matching answer values for visual corroboration', () => {
+    const first = solvedObservation(); first.category = 'abstract'
+    first.answer!.evidence = ['r1c1: 1 star with 4 points', 'r1c2: 1 star with 5 points']
+    const other = structuredClone(first)
+    other.answer!.evidence = ['r1c1: 1 star', 'r1c2: 2 stars']
+    const candidates = [candidate(0, first), candidate(1, other)]
+    expect(comparisonAnswersMatch(candidates)).toBe(true)
+    expect(selectAptitudeComparison(candidates).comparison).toMatchObject({ decision: 'disagreement', selectedModelId: null })
+    other.answer!.evidence = [...first.answer!.evidence].reverse()
+    expect(selectAptitudeComparison([candidate(0, first), candidate(1, other)]).comparison.decision).toBe('agreement')
   })
 })
 

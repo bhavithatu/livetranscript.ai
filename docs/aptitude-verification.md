@@ -71,6 +71,35 @@ report declares `liveModel: false` and `nativePicker: false`; its response timin
 must not be cited as model latency.
 
 For live inference, follow the explicit bounded procedure in
-[the evaluation guide](../evals/aptitude/README.md). Its twelve synthetic examples
+[the evaluation guide](../evals/aptitude/README.md). Its synthetic examples
 are a pipeline pilot, not a sufficient accuracy benchmark. Real assessment
 performance and supported-device capture require additional measured evidence.
+
+## Diagram and preview regression follow-up — 2026-11-18
+
+Production feedback exposed gaps in the initial numerical-question pilot: a
+pinned answer was displayed alongside the newest preview, tiny diagrams could
+lose detail during repeated image resizing, and a correct calculation could
+contradict the model's stated number-pattern rule.
+
+The follow-up binds the sidebar to the selected history capture, exposes an
+actual-pixel inspector and visual area selection, preserves image detail within
+the request limit, and validates declared numeric-pattern transitions. It also
+withholds visual corroboration when the models describe different observed
+features, even if their final values match.
+
+Regression coverage includes pinned history while automatic captures arrive,
+returning to latest, selector-only images never reaching the analysis request,
+fresh detailed recapture on Apply, source termination during selection,
+high-resolution colored detail, portrait aspect ratio, payload overflow and
+incorrect numeric rule application. Eight new original visual fixtures bring
+the evaluation set to twenty, including a paired large-page stress case,
+star-point counting, rotating and XOR grids, missing evidence and ambiguity.
+
+At this commit, the offline evaluation passes 33 tests (live inference and image
+preparation are separate opt-ins). Live diagram inference and native-browser
+verification must be recorded separately after deployment. A passing offline
+scorer or stubbed browser workflow is not a measurement of model accuracy.
+
+Clients should reload after this release: new clients accept older responses,
+but an already-open old bundle rejects the new optional numeric-pattern field.

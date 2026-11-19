@@ -2,7 +2,7 @@
 
 import Image from 'next/image'
 import { useCallback, useEffect, useEffectEvent, useId, useRef, useState } from 'react'
-import { Camera, FlaskConical, Monitor, Pause, Play, Square, Upload } from 'lucide-react'
+import { Camera, Crop, FlaskConical, Monitor, Pause, Play, Square, Upload, ZoomIn } from 'lucide-react'
 import { useScreenStream } from '@/lib/vision/useScreenStream'
 import { useAptitudeCapture } from '@/lib/aptitude/useAptitudeCapture'
 import { createAptitudeCapture, type AptitudeCapture, type NormalizedRegion } from '@/lib/aptitude/captureDetector'
@@ -11,11 +11,12 @@ import { APTITUDE_HISTORY_LIMIT, useAptitudeSession } from '@/lib/aptitude/useAp
 import { AptitudeAnswer, aptitudeEntryLabel, aptitudeEntryStatus, aptitudeStrategyLabel } from './AptitudeAnswer'
 import { createPracticeCapture, readCaptureFile } from './captureInput'
 import { FULL_REGION, RegionControls } from './RegionControls'
+import { CaptureInspector } from './CaptureInspector'
 import styles from './AptitudeWorkspace.module.css'
 
 /** Content only; CopilotWorkspace owns route navigation and WorkspaceShell. */
 export function AptitudeWorkspace() {
-  const screen = useScreenStream()
+  const screen = useScreenStream({ preferNativeResolution: true })
   const session = useAptitudeSession()
   const { sampleFrame: sampleScreenFrame } = screen
   const { analyze } = session
@@ -34,6 +35,7 @@ export function AptitudeWorkspace() {
   const [masks, setMasks] = useState<NormalizedRegion[]>([])
   const [preview, setPreview] = useState<AptitudeCapture | null>(null)
   const [previewSource, setPreviewSource] = useState<'screen' | 'upload' | 'practice'>('screen')
+  const [inspection, setInspection] = useState<{ capture: AptitudeCapture; title: string; selecting: boolean } | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [inputError, setInputError] = useState<string | null>(null)
   const [readingFile, setReadingFile] = useState(false)
@@ -60,6 +62,7 @@ export function AptitudeWorkspace() {
   const onSharingEnded = useEffectEvent(() => {
     setAutomatic(false)
     session.stop()
+    setInspection((current) => current?.selecting ? null : current)
   })
   useEffect(() => {
     if (wasSharing.current && !screen.sharing) onSharingEnded()
@@ -92,6 +95,7 @@ export function AptitudeWorkspace() {
     fileRequest.current?.abort()
     fileRequest.current = null
     setReadingFile(false)
+    setInspection(null)
   }
 
   const stopSharing = () => {
@@ -112,6 +116,7 @@ export function AptitudeWorkspace() {
       return
     }
     const capture = createAptitudeCapture(sample)
+    session.pin(null)
     setScreenChanged(false)
     setPreview(capture)
     setPreviewSource('screen')
@@ -127,17 +132,55 @@ export function AptitudeWorkspace() {
     watcher.reset()
     screen.stop()
     setPreview(null)
+    session.pin(null)
+    setCrop(FULL_REGION)
     setScreenChanged(false)
     setInputError(null)
     setNotice(null)
     await screen.start()
     if (generation !== inputGeneration.current) return
-    const sample = sampleFrame()
+    const sample = sampleScreenFrame({ crop: FULL_REGION, masks })
     if (sample.kind === 'available') {
       setPreview(createAptitudeCapture(sample))
       setPreviewSource('screen')
-      setNotice('Preview ready. Review the question area before starting automatic analysis.')
+      setNotice('Preview ready. Select the question area to keep small text and diagrams readable before starting analysis.')
+    } else setInputError(sample.reason || 'Select the question area or refresh the preview once the shared source is ready.')
+  }
+
+  const selectQuestionArea = () => {
+    cancelInput()
+    pause()
+    setInputError(null)
+    // This smaller, local-only view is never assigned to preview or sent to a model.
+    const source = sampleScreenFrame({ crop: FULL_REGION, masks, previewOnly: true })
+    if (source.kind !== 'available') {
+      setInputError(source.reason || 'The shared source is not ready. Try again after it has loaded.')
+      return
     }
+    setInspection({ capture: createAptitudeCapture(source), title: 'Select question area', selecting: true })
+  }
+
+  const applyQuestionArea = (next: NormalizedRegion) => {
+    // Validate the fresh source before replacing a still-usable prior capture.
+    // The native browser sharing control can end the stream while this dialog is open.
+    const sample = sampleScreenFrame({ crop: next, masks })
+    if (sample.kind !== 'available') {
+      setInspection(null)
+      setInputError(sample.reason || 'Could not capture this question area. The previous capture has been kept.')
+      return
+    }
+    cancelInput()
+    pause()
+    watcher.reset()
+    setCrop(next)
+    setPreview(null)
+    session.pin(null)
+    setScreenChanged(false)
+    setInputError(null)
+    // Re-read the source at analysis quality; never analyze the selection thumbnail.
+    setPreview(createAptitudeCapture(sample))
+    setPreviewSource('screen')
+    setNotice('Question area captured. Enlarge the preview to check the diagram and every answer choice, then analyze or start automatic capture.')
   }
 
   const upload = async (file?: File) => {
@@ -146,6 +189,7 @@ export function AptitudeWorkspace() {
     setAutomatic(false)
     session.stop()
     setPreview(null)
+    session.pin(null)
     setScreenChanged(false)
     setInputError(null)
     setNotice(null)
@@ -174,6 +218,7 @@ export function AptitudeWorkspace() {
     cancelInput()
     setAutomatic(false)
     session.stop()
+    session.pin(null)
     setScreenChanged(false)
     setInputError(null)
     try {
@@ -202,6 +247,9 @@ export function AptitudeWorkspace() {
   }[watcher.status]
   const currentIndex = session.selected ? session.entries.findIndex((item) => item.id === session.selected!.id) : -1
   const answerEntry = session.pinned ? session.selected : preview?.image === session.current?.capture.image && session.current?.strategy === strategy ? session.current : null
+  const savedPreview = session.pinned ? session.selected : null
+  const displayedCapture = savedPreview?.capture ?? preview
+  const savedCaptureLabel = savedPreview ? aptitudeEntryLabel(savedPreview, currentIndex) : null
 
   return <div className={styles.workspace}>
     <section className={styles.controls} aria-label="Aptitude capture controls">
@@ -230,6 +278,7 @@ export function AptitudeWorkspace() {
           <Monitor size={16} aria-hidden />{screen.starting ? 'Cancel sharing setup' : screen.sharing ? 'Change shared screen' : 'Share screen'}
         </button>
         <button type="button" className="btn-ghost" disabled={!screen.sharing || readingFile} onClick={() => takeCapture(true)}><Camera size={16} aria-hidden />Capture now</button>
+        <button type="button" className="btn-ghost" disabled={!screen.sharing || readingFile} onClick={selectQuestionArea}><Crop size={16} aria-hidden />Select question area</button>
         <button type="button" className="btn-ghost" disabled={readingFile} onClick={() => fileInput.current?.click()}><Upload size={16} aria-hidden />Upload screenshot</button>
         <input ref={fileInput} className={styles.hiddenInput} type="file" accept="image/png,image/jpeg,image/webp" aria-label="Upload aptitude screenshot" onChange={(event) => void upload(event.target.files?.[0])} />
         {screen.sharing && <button type="button" className={autoOn ? 'btn-ghost' : 'btn-signal'} aria-pressed={autoOn} disabled={readingFile} onClick={() => {
@@ -254,14 +303,21 @@ export function AptitudeWorkspace() {
     <div className={styles.columns}>
       <aside className={styles.side} aria-label="Capture preview and question history">
         <section className={styles.preview}>
-          <div className={styles.sectionHeading}><h2>Capture preview</h2>{preview && <span className={styles.badge}>{previewSource === 'practice' ? 'Practice' : previewSource === 'upload' ? 'Uploaded' : 'Screen'}</span>}</div>
-          {preview ? <>
-            <Image className={styles.captureImage} src={preview.image} width={preview.width} height={preview.height} alt="Question screenshot ready for analysis" unoptimized />
-            <p className={styles.muted}><time dateTime={new Date(preview.capturedAt).toISOString()}>{new Date(preview.capturedAt).toLocaleTimeString()}</time> · {preview.width} × {preview.height}</p>
-            <button type="button" className="btn-signal" disabled={readingFile || awaitingCurrentCapture || session.running?.capture.image === preview.image && session.running.strategy === strategy} onClick={() => { setNotice(null); void session.analyze(preview, category, strategy) }}>Analyze this capture</button>
-            {awaitingCurrentCapture && <p className={styles.muted}>Previous capture. The shared screen has changed.</p>}
-            <p className={styles.muted}>Make sure the full stem, passage, diagrams and choices are readable. Only this captured image is analyzed.</p>
-            {previewSource === 'upload' && <p className={styles.muted}>Uploaded images are sent as shown. To omit content, upload a cropped or redacted image.</p>}
+          <div className={styles.sectionHeading}><h2>Capture preview</h2>{displayedCapture && <span className={styles.badge}>{savedPreview ? `Saved · ${savedCaptureLabel}` : previewSource === 'practice' ? 'Practice' : previewSource === 'upload' ? 'Uploaded' : 'Screen'}</span>}</div>
+          {displayedCapture ? <>
+            <Image className={styles.captureImage} src={displayedCapture.image} width={displayedCapture.width} height={displayedCapture.height} alt={savedPreview ? 'Screenshot for selected saved capture' : 'Question screenshot ready for analysis'} unoptimized />
+            <p className={styles.muted}><time dateTime={new Date(displayedCapture.capturedAt).toISOString()}>{new Date(displayedCapture.capturedAt).toLocaleTimeString()}</time> · {displayedCapture.width} × {displayedCapture.height}</p>
+            <button type="button" className="btn-ghost" onClick={() => setInspection({ capture: displayedCapture, title: savedPreview ? `${savedCaptureLabel} — exact image` : 'Capture preview — exact image', selecting: false })}><ZoomIn size={16} aria-hidden />Enlarge capture</button>
+            {savedPreview ? <>
+              <p className={styles.previewIdentity}>This is the image for {savedCaptureLabel} shown alongside it.</p>
+              <button type="button" className="btn-ghost" onClick={() => session.pin(null)}>Return to latest capture</button>
+            </> : <>
+              <button type="button" className="btn-signal" disabled={readingFile || awaitingCurrentCapture || session.running?.capture.image === displayedCapture.image && session.running.strategy === strategy} onClick={() => { setNotice(null); void session.analyze(displayedCapture, category, strategy) }}>Analyze this capture</button>
+              {awaitingCurrentCapture && <p className={styles.muted}>Previous capture. The shared screen has changed.</p>}
+              <p className={styles.muted}>Make sure the full stem, passage, diagrams and choices are readable. Only this captured image is analyzed.</p>
+              {previewSource === 'screen' && <p className={styles.previewTip}>Small diagram? Use Select question area above to remove surrounding page space, then check it with Enlarge capture.</p>}
+              {previewSource === 'upload' && <p className={styles.muted}>Uploaded images are sent as shown. To omit content, upload a cropped or redacted image.</p>}
+            </>}
           </> : <div className={styles.emptyPreview}><Camera size={28} aria-hidden /><p>Share a screen or upload a screenshot.</p><span>Preview the exact question before sending it.</span></div>}
         </section>
         <section className={styles.history} aria-label="Question history">
@@ -296,7 +352,7 @@ export function AptitudeWorkspace() {
 
       <section className={styles.answerColumn} aria-label="Current aptitude answer">
         {session.pinned && <div className={styles.pinned}>
-          <span>Viewing a saved capture{session.running && session.running.id !== session.selected?.id ? ' · Another question is being analyzed' : ''}.</span>
+          <span>Viewing a saved capture{session.running && session.running.id !== session.selected?.id ? ' · Another question is being analyzed' : preview && preview.image !== session.selected?.capture.image ? ' · A newer capture is available' : ''}.</span>
           <button type="button" className={styles.textButton} onClick={() => session.pin(null)}>Follow latest</button>
         </div>}
         {awaitingCurrentCapture && !session.pinned ? <div className={styles.emptyAnswer}>
@@ -317,5 +373,7 @@ export function AptitudeWorkspace() {
       </section>
     </div>
     <p className={styles.privacyNote}>Screen capture starts only when you choose a source. Captured questions are sent to the configured AI service when you analyze them. This mode does not select or submit answers on another website.</p>
+    {inspection && <CaptureInspector capture={inspection.capture} title={inspection.title} crop={crop}
+      onApply={inspection.selecting ? applyQuestionArea : undefined} onClose={() => setInspection(null)} />}
   </div>
 }

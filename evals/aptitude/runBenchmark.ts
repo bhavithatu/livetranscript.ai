@@ -10,6 +10,7 @@ import { prepareAptitudeFixtures } from './manifest'
 import { AptitudeEvaluationCallGuard, planAptitudeEvaluation, type EvaluationStrategy } from './evaluationPlan'
 import { aggregateAptitudeAttempts, type ScoredEvaluationAttempt } from './evaluationReport'
 import { scoreAptitude, scoreAptitudeComparison } from './score'
+import { selectAptitudeFixtures } from './selectFixtures'
 
 type ProviderCall = {
   modelId: string
@@ -39,7 +40,8 @@ function knownTotal(calls: ProviderCall[], field: 'inputTokens' | 'outputTokens'
 }
 
 it.skipIf(process.env.APTITUDE_EVAL_LIVE !== '1')('run bounded, image-grounded live aptitude evaluation', async () => {
-  const plan = planAptitudeEvaluation(process.env, APTITUDE_FIXTURES.length)
+  const fixtures = selectAptitudeFixtures(APTITUDE_FIXTURES, process.env.APTITUDE_EVAL_FIXTURES)
+  const plan = planAptitudeEvaluation(process.env, fixtures.length)
   // Validate every explicitly selected model and credential before the first call.
   for (const id of plan.modelIds) {
     aptitudeModel(id)
@@ -55,7 +57,7 @@ it.skipIf(process.env.APTITUDE_EVAL_LIVE !== '1')('run bounded, image-grounded l
   const attempts: Attempt[] = []
   const budget = new AptitudeEvaluationCallGuard(plan)
   const report = {
-    version: 2, kind: 'live-aptitude-evaluation', complete: false, aborted: false, ...plan, callsStarted: 0,
+    version: 3, kind: 'live-aptitude-evaluation', complete: false, aborted: false, ...plan, fixtureIds: fixtures.map(fixture => fixture.id), callsStarted: 0,
     startedAt: new Date().toISOString(), finishedAt: null as string | null, manifest, attempts, aggregates: [] as unknown[],
     limitations: [
       'Owned synthetic pilot only; not a validation of real assessment performance.',
@@ -63,6 +65,7 @@ it.skipIf(process.env.APTITUDE_EVAL_LIVE !== '1')('run bounded, image-grounded l
       'No price estimate: token counts are actual when returned, otherwise null. Failed or cancelled calls can still incur provider charges.',
       'Comparison wall-clock duration is measured independently of per-provider duration and total usage; parallel calls are not free.',
       'Critical-text coverage is a diagnostic, not semantic or OCR accuracy.',
+      'Evidence-review rubrics flag known visual/rationale failure modes for human review. Passing them is not proof of semantic correctness.',
       'The harness scores the production selector; it does not tune the selector, use answer keys to choose an answer, or select a deployment model.',
     ],
   }
@@ -78,7 +81,8 @@ it.skipIf(process.env.APTITUDE_EVAL_LIVE !== '1')('run bounded, image-grounded l
   process.on('SIGINT', interrupt); process.on('SIGTERM', interrupt)
   checkpoint()
   try {
-    outer: for (const arm of plan.arms) for (let repeat = 1; repeat <= plan.repeats; repeat++) for (const { fixture, png, sha256 } of rendered) {
+    const selectedIds = new Set(fixtures.map(fixture => fixture.id))
+    outer: for (const arm of plan.arms) for (let repeat = 1; repeat <= plan.repeats; repeat++) for (const { fixture, png, sha256 } of rendered.filter(item => selectedIds.has(item.fixture.id))) {
       if (controller.signal.aborted) break outer
       const attempt: Attempt = {
         fixtureId: fixture.id, split: fixture.split, category: fixture.expected.category, expectedStatus: fixture.expected.status,

@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import type { AptitudeSessionEntry } from '@/lib/aptitude/useAptitudeSession'
 import { APTITUDE_CATEGORY_LABELS, type AptitudeResult, type AptitudeStrategy } from '@/lib/aptitude/schema'
 import { AptitudeComparison } from './AptitudeComparison'
+import { formatAptitudeOption } from './formatOption'
 import styles from './AptitudeWorkspace.module.css'
 
 function Elapsed({ entry }: { entry: AptitudeSessionEntry }) {
@@ -40,7 +41,7 @@ function SuggestedAnswer({ result }: { result: AptitudeResult }) {
   return <>
     <div className={styles.answerValue}>
       <p className={styles.eyebrow}>Suggested answer</p>
-      {choices.length > 0 ? <h3>{choices.map((choice) => `${choice.label} — ${choice.text}`).join(' · ')}</h3>
+      {choices.length > 0 ? <h3>{choices.map(formatAptitudeOption).join(' · ')}</h3>
         : <h3>{answer.value ? `${answer.value}${answer.unit ? ` ${answer.unit}` : ''}` : answer.summary}</h3>}
       <p>{answer.summary}</p>
     </div>
@@ -49,8 +50,8 @@ function SuggestedAnswer({ result }: { result: AptitudeResult }) {
       <ol>{answer.workedExplanation.map((step, index) => <li key={index}>{step}</li>)}</ol>
     </section>
     <section className={styles.verification} aria-label="Answer check">
-      <h3>{result.verification.outcome === 'passed' ? 'Check passed' : result.verification.outcome === 'disagreed' ? 'Check needs review' : 'Check'}</h3>
-      <p className={styles.muted}>{result.verification.method === 'arithmetic' ? 'Arithmetic verification' : result.verification.method === 'source_review' ? 'Review against captured evidence' : 'No independent check was available.'}</p>
+      <h3>{result.verification.outcome === 'passed' ? 'Calculation matches' : result.verification.outcome === 'disagreed' ? 'Calculation needs review' : 'Answer review'}</h3>
+      <p className={styles.muted}>{result.verification.method === 'arithmetic' ? 'Arithmetic only. This does not verify that the image was read correctly or that the chosen rule is valid.' : result.verification.method === 'source_review' ? 'Review against captured evidence' : 'No independent check was available.'}</p>
       {result.verification.notes.length > 0 && <ul>{result.verification.notes.map((note, index) => <li key={index}>{note}</li>)}</ul>}
     </section>
   </>
@@ -98,7 +99,7 @@ export function AptitudeAnswer({ entry, index, retryStrategy, onRetry, onStop, o
         <h3>Observed question</h3><p>{question.stem}</p>
         {question.instructions.length > 0 && <ul>{question.instructions.map((item, i) => <li key={i}>{item}</li>)}</ul>}
         {question.passage && <blockquote>{question.passage}</blockquote>}
-        {question.options.length > 0 && <ul>{question.options.map((option) => <li key={option.id}><strong>{option.label}.</strong> {option.text}</li>)}</ul>}
+        {question.options.length > 0 && <ul>{question.options.map((option) => <li key={option.id}>{formatAptitudeOption(option)}</li>)}</ul>}
         {answer?.evidence.length ? <><h3>Evidence used</h3><ul>{answer.evidence.map((item, i) => <li key={i}>{item}</li>)}</ul></> : null}
       </div>}
       {result?.model && <p className={styles.muted}>Analyzed with {result.model} · Service time {(result.durationMs / 1000).toFixed(1)} s</p>}

@@ -43,6 +43,9 @@ export type AptitudeAnswer = {
   workedExplanation: string[]
   evidence: string[]
   calculation: { expression: string; claimedValue: number; decimalPlaces: number | null } | null
+  /** Present only for a next-value prediction using one of these exact, bounded numeric rules.
+   * Optional on the wire so captures produced before this field remain readable. */
+  numericPattern?: { observedValues: number[]; rule: 'constant_difference' | 'constant_second_difference' | 'constant_ratio' } | null
 }
 export type AptitudeStatus = 'solved' | 'needs_capture' | 'ambiguous' | 'unsupported' | 'error'
 export type AptitudeVerification = {
@@ -155,7 +158,7 @@ function parseQuestion(value: unknown): AptitudeQuestion | null {
 }
 function parseAnswer(value: unknown): AptitudeAnswer | null {
   if (value === null) return null
-  const item = object(value, 'Answer', ['selectedOptionIds', 'value', 'unit', 'summary', 'workedExplanation', 'evidence', 'calculation'])
+  const item = object(value, 'Answer', ['selectedOptionIds', 'value', 'unit', 'summary', 'workedExplanation', 'evidence', 'calculation', 'numericPattern'], ['numericPattern'])
   let calculation: AptitudeAnswer['calculation'] = null
   if (item.calculation !== null) {
     const calc = object(item.calculation, 'Calculation', ['expression', 'claimedValue', 'decimalPlaces'])
@@ -165,9 +168,25 @@ function parseAnswer(value: unknown): AptitudeAnswer | null {
   }
   const selectedOptionIds = strings(item.selectedOptionIds, 'selected options', 20, 80)
   if (new Set(selectedOptionIds).size !== selectedOptionIds.length) return fail('Duplicate selected options')
+  let numericPattern: AptitudeAnswer['numericPattern']
+  if ('numericPattern' in item) {
+    if (item.numericPattern === null) numericPattern = null
+    else {
+      const pattern = object(item.numericPattern, 'Numeric pattern', ['observedValues', 'rule'])
+      const rule = member(pattern.rule, ['constant_difference', 'constant_second_difference', 'constant_ratio'], 'numeric pattern rule')
+      if (!Array.isArray(pattern.observedValues) || pattern.observedValues.length < (rule === 'constant_second_difference' ? 4 : 3) || pattern.observedValues.length > 24) return fail('A numeric pattern requires enough observed values to check its rule')
+      const observedValues = pattern.observedValues.map(value => {
+        const n = finiteNumber(value, 'numeric pattern value')
+        if (Math.abs(n) > 1e12 || n !== Number(n.toFixed(12))) return fail('Numeric pattern values exceed supported precision or size')
+        return n
+      })
+      numericPattern = { observedValues, rule }
+    }
+  }
   return { selectedOptionIds, value: nullableString(item.value, 'answer value', 500), unit: nullableString(item.unit, 'unit', 100),
     summary: string(item.summary, 'answer summary', 1_000, true), workedExplanation: strings(item.workedExplanation, 'worked explanation', 6, 2_000),
-    evidence: strings(item.evidence, 'answer evidence', 12, 2_000), calculation }
+    evidence: strings(item.evidence, 'answer evidence', 12, 2_000), calculation,
+    ...('numericPattern' in item ? { numericPattern } : {}) }
 }
 function validateConsistency(observation: { category: AptitudeCategory; status: AptitudeStatus; question: AptitudeQuestion | null; answer: AptitudeAnswer | null; message: string | null }) {
   const { question, answer, status, category } = observation
@@ -276,6 +295,7 @@ const answerSchema = strictObject({
   selectedOptionIds: list(textSchema), value: nullableTextSchema, unit: nullableTextSchema,
   summary: textSchema, workedExplanation: list(textSchema), evidence: list(textSchema),
   calculation: { anyOf: [strictObject({ expression: textSchema, claimedValue: { type: 'number' }, decimalPlaces: { type: ['integer', 'null'] } }), { type: 'null' }] },
+  numericPattern: { anyOf: [strictObject({ observedValues: list({ type: 'number' }), rule: { type: 'string', enum: ['constant_difference', 'constant_second_difference', 'constant_ratio'] } }), { type: 'null' }] },
 })
 /** Provider-side schema plus strict runtime/semantic validation above. */
 export const APTITUDE_OBSERVATION_JSON_SCHEMA = strictObject({

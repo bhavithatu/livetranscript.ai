@@ -10,6 +10,12 @@ automatic analysis are separate actions. **Start automatic capture** enables
 question-by-question capture for the active source, without another confirmation
 for each frame. Pause, Stop analysis, and Stop sharing remain reachable.
 
+For a small diagram on a large page, choose **Select question area** and drag
+around the entire question and its choices. Percentage inputs remain available
+for keyboard use. Applying the selection refreshes the detailed capture without
+making a model request. **Enlarge capture** offers a fit view and an actual-pixel
+view so the screenshot can be checked before analysis.
+
 The answer card shows the exact choice label and text, a brief worked explanation,
 captured evidence, an explicit verification status, and measured elapsed time.
 Missing passages/options and ambiguous questions withhold the answer and explain
@@ -47,6 +53,11 @@ type and the full option mapping. Only option-label decoration such as `B.`
 versus `(B)` is normalized; literal option text remains unchanged. This is
 deliberately conservative and may withhold on benign transcription differences.
 Model-generated option IDs are not comparable across candidates.
+Abstract and spatial questions also require matching observed visual inventories;
+the same generic question stem and answer value cannot corroborate conflicting
+shape counts or cell positions. When answer values match but evidence cannot be
+reconciled, the UI says **Same answer, evidence needs review** and selects no
+recommendation.
 
 When the source agrees, at least two matching answers can support a recommendation.
 A two-to-one split is labeled as a majority, and the dissenting answer remains
@@ -75,8 +86,13 @@ shared-screen coordinates.
 
 `useScreenStream.sampleFrame` is independent of legacy `grabFrame` deduplication.
 Manual capture remains usable even when an automatic watcher has sampled the
-same screen. Images are scaled to a readable bounded size and compressed before
-submission. Permission acquisition, video startup, replacement streams, browser
+same screen. Aptitude requests high-detail source pixels where the browser supports
+them, preserves dimensions up to a 4096-pixel long edge, and uses PNG first.
+High-quality JPEG fallback keeps the same dimensions. A capture that cannot fit
+the image budget asks for a smaller complete question area instead of repeatedly
+shrinking the screenshot. The local-only area selector may use a 1536-pixel
+preview; applying the area always resamples the source at analysis quality.
+Permission acquisition, video startup, replacement streams, browser
 Stop, page exit and unmount use generation-scoped cleanup.
 
 `AptitudeCaptureDetector` keeps separate previous-sample and accepted-image
@@ -102,6 +118,10 @@ the transport ignores cancellation. A newly loaded preview cannot show an earlie
 answer as if it described that image. While a changed screen settles, the previous
 suggestion is withheld from the current view. Explicitly pinned history stays
 clearly labeled and does not stop new captures.
+While history is pinned, the sidebar preview, timestamp, dimensions and answer
+all belong to that same saved capture. New captures remain available through
+**Follow latest**; they do not replace the pinned screenshot. An explicit new
+manual capture or upload returns the view to the new question.
 
 The last 12 captures remain in tab memory. Clear removes screenshots and answers;
 reload removes the session. No captured question image is stored in localStorage.
@@ -140,6 +160,13 @@ It accepts only bounded numeric expressions; no generated code or unrestricted
 an ambiguity state. Arithmetic agreement does not establish correct OCR, units,
 formula selection or reasoning. Other answers explicitly say no independent
 correctness check was performed. No calibrated confidence percentage is invented.
+
+When a model declares a constant difference, constant second difference or
+constant ratio for a numeric sequence, a bounded exact-rational check replays
+every transcribed transition and predicts the next value. It rejects a final
+calculation that conflicts with that declared rule. This is not a visual parser
+and does not establish that the rule is unique. The UI labels successful checks
+**Calculation matches**, with their arithmetic-only scope visible.
 
 The server shares a 25-second deadline across configured attempts, disables SDK
 retries, and prevents further fallback after cancellation. The client has a

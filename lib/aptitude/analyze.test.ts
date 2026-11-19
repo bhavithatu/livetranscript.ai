@@ -58,4 +58,21 @@ describe('grounded aptitude analysis', () => {
     expect(result.answer).toBeNull()
     expect(transport).toHaveBeenCalledOnce()
   })
+  it('withholds a provider answer whose arithmetic contradicts its stated numeric pattern', async () => {
+    const observation = solvedObservation()
+    observation.category = 'abstract'
+    observation.question!.stem = 'Which number comes next: 3, 7, 13, 21, ?'
+    observation.question!.options = [{ id: 'one', label: '', text: '29' }, { id: 'two', label: '', text: '31' }]
+    observation.answer = {
+      selectedOptionIds: ['one'], value: '29', unit: null, summary: '29',
+      workedExplanation: ['The differences grow by 2: 4, 6, 8, then 10.'], evidence: ['3, 7, 13, 21'],
+      calculation: { expression: '21+8', claimedValue: 29, decimalPlaces: null },
+      numericPattern: { observedValues: [3, 7, 13, 21], rule: 'constant_second_difference' },
+    }
+    const transport = vi.fn<AptitudeTransport>().mockResolvedValue({ text: JSON.stringify(observation), model: 'actual' })
+    const result = await analyzeAptitude(TEST_REQUEST, undefined, { env, transport })
+    expect(result).toMatchObject({ status: 'ambiguous', answer: null, verification: { outcome: 'disagreed' } })
+    expect(result.verification.notes).toContain('The final calculation does not follow the stated numeric pattern.')
+    expect(transport).toHaveBeenCalledOnce()
+  })
 })

@@ -6,7 +6,7 @@ import styles from './AptitudeWorkspace.module.css'
 
 export const FULL_REGION: NormalizedRegion = { x: 0, y: 0, width: 1, height: 1 }
 
-function RegionFields({ label, value, onChange }: { label: string; value: NormalizedRegion; onChange: (next: NormalizedRegion) => void }) {
+export function RegionFields({ label, value, onChange }: { label: string; value: NormalizedRegion; onChange: (next: NormalizedRegion) => void }) {
   const id = useId()
   function change(key: keyof NormalizedRegion, raw: string) {
     const number = Number(raw)
