@@ -59,6 +59,28 @@ describe('quarter-turn grid literal inventory rubric', () => {
     expect(review(result(inventory))?.reviewRequired).toBe(true)
   })
 
+  it('accepts the latest complete inventory with missing-panel wording, inherited choice qualifiers and sequence explanation', () => {
+    const inventory = [...explicitInventory]
+    inventory[2] = inventory[2].replace('shows a question mark', 'is the missing panel')
+    inventory[3] = 'Choices: A filled cells r1c2,r1c3,r2c2; B r2c2,r2c3,r3c3; C r2c2,r3c1,r3c2; D r1c1,r2c1,r2c2.'
+    const value = result(inventory)
+    value.answer!.workedExplanation = [
+      'Each row advances through the same sequence of filled-cell arrangements; the next row begins one arrangement later.',
+      'After r3c2, the sequence returns to filled cells r1c1, r2c1 and r2c2, matching D.',
+    ]
+    expect(review(value)?.reviewRequired).toBe(false)
+    value.answer!.evidence[3] = value.answer!.evidence[3].replace('D r1c1,r2c1,r2c2', 'D r1c1,r2c1,r2c1')
+    expect(review(value)?.reviewRequired).toBe(true)
+  })
+
+  it('accepts numbered panels under a row scope and the literal question-mark marker', () => {
+    const inventory = scopedInventory.map(item => item.replace(/\bpanel c(\d+)/gu, 'panel $1')
+      .replace("panel 3 is '?'", 'panel 3 is the ? at the bottom-right'))
+    expect(review(result(inventory))?.reviewRequired).toBe(false)
+    inventory[0] = inventory[0].replace('Row 1: ', '')
+    expect(review(result(inventory))?.reviewRequired).toBe(true)
+  })
+
   it.each([
     ['missing cell', 'r1c1, r2c1'],
     ['duplicate cell', 'r1c1, r2c1, r2c1'],
@@ -86,10 +108,10 @@ describe('quarter-turn grid literal inventory rubric', () => {
     expect(review(wrongChoice)?.reviewRequired).toBe(true)
   })
 
-  it('still requires the rotation statement and rejects the conflicting growth rule', () => {
+  it('derives the rotation from a complete correct inventory and still rejects the conflicting growth rule', () => {
     const missingRule = result()
     missingRule.answer!.workedExplanation = ['The missing panel matches option D.']
-    expect(review(missingRule)?.reviewRequired).toBe(true)
+    expect(review(missingRule)?.reviewRequired).toBe(false)
     const conflictingRule = result()
     conflictingRule.answer!.workedExplanation.push('Each panel adds one square.')
     expect(review(conflictingRule)?.reviewRequired).toBe(true)
@@ -98,5 +120,8 @@ describe('quarter-turn grid literal inventory rubric', () => {
   it('preserves the existing verbal count check when no cell inventory is provided', () => {
     expect(review(result(['Every panel contains three filled squares.']))?.reviewRequired).toBe(false)
     expect(review(result(['Every panel contains four filled squares.']))?.reviewRequired).toBe(true)
+    const missingRule = result(['Every panel contains three filled squares.'])
+    missingRule.answer!.workedExplanation = ['The missing panel matches option D.']
+    expect(review(missingRule)?.reviewRequired).toBe(true)
   })
 })

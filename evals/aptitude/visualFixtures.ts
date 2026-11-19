@@ -29,7 +29,7 @@ export const APTITUDE_VISUAL_FIXTURES: readonly AptitudeFixture[] = [
     expected: { category: 'abstract', status: 'solved', selectedLabels: ['D'], criticalText: ['bottom-right'],
       evidenceChecks: [{ id: 'three-squares-rotate', description: 'Tracks rotation of three filled squares, with every panel and choice checked when literal cell inventories are given.',
         gridRotationInventory: true,
-        allPatterns: ['(?:clockwise|quarter[ -]turn|90)'],
+        allPatterns: ['(?:3|three)[ -]*(?:filled |green |colored |coloured )?squares', '(?:clockwise|quarter[ -]turn|90)'],
         forbiddenPatterns: ['(?:adds? (?:one|1)|one more square|number of squares increases)'] }],
     } },
   { id: 'visual-grid-exclusive-or', split: 'held_out',

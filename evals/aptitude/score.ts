@@ -32,12 +32,16 @@ function invalidScore(fixture: AptitudeFixture): AptitudeScore {
 function reviewEvidence(fixture: AptitudeFixture, result: Pick<AptitudeResult, 'question' | 'answer'>): AptitudeEvidenceReview | null {
   if (!fixture.expected.evidenceChecks?.length && fixture.expected.calculationValue === undefined) return null
   const evidence = [result.question?.stem ?? '', ...(result.answer?.evidence ?? []), ...(result.answer?.workedExplanation ?? []), result.answer?.calculation?.expression ?? ''].join('\n')
-  const checks = (fixture.expected.evidenceChecks ?? []).map(check => ({
-    id: check.id, description: check.description,
-    passed: check.allPatterns.every(pattern => new RegExp(pattern, 'iu').test(evidence))
-      && (!check.gridRotationInventory || hasCorrectRotationGridInventory(result.answer?.evidence ?? [], evidence))
-      && !(check.forbiddenPatterns ?? []).some(pattern => new RegExp(pattern, 'iu').test(evidence)),
-  }))
+  const checks = (fixture.expected.evidenceChecks ?? []).map(check => {
+    const inventory = check.gridRotationInventory ? hasCorrectRotationGridInventory(result.answer?.evidence ?? []) : null
+    return {
+      id: check.id, description: check.description,
+      // Exact source/choice configurations establish the known rotation without an English keyword.
+      // Absent coordinates retain the verbal rubric; incorrect coordinates cannot fall back to it.
+      passed: (inventory ?? check.allPatterns.every(pattern => new RegExp(pattern, 'iu').test(evidence)))
+        && !(check.forbiddenPatterns ?? []).some(pattern => new RegExp(pattern, 'iu').test(evidence)),
+    }
+  })
   let calculationMatchesExpected: boolean | null = null
   if (fixture.expected.calculationValue !== undefined && result.answer?.calculation) {
     try {

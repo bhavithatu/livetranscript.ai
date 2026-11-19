@@ -8,7 +8,7 @@ export type AptitudeEvidenceCheck = {
   /** Diagnostic rubric only. These patterns never enter the provider request. */
   allPatterns: string[]
   forbiddenPatterns?: string[]
-  /** This original grid has a fixed source/choice inventory, scored only after the model returns. */
+  /** Complete exact coordinates can establish this grid's rule; absent coordinates use allPatterns. */
   gridRotationInventory?: boolean
 }
 
