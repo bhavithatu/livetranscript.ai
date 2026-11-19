@@ -112,6 +112,46 @@ describe('visual evidence review and answer scoring', () => {
     expect(scoreAptitude(truth, value).evidenceReview?.calculationMatchesExpected).toBe(false)
   })
 
+  it('recognizes the observed “differ by” wording with the complete increment rule', () => {
+    const value = incrementResult()
+    value.answer!.workedExplanation = [
+      'Reading clockwise from the top, the values 8, 12, 18, 26 differ by 4, 6, 8.',
+      'The differences rise by 2 each step, so the next difference is 10.',
+      '26 + 10 = 36, so the question mark is 36.',
+    ]
+    value.answer!.numericPattern = { observedValues: [8, 12, 18, 26], rule: 'constant_second_difference' }
+    expect(scoreAptitude(fixture('visual-star-increasing-differences'), value)).toMatchObject({
+      answerCorrect: true,
+      evidenceReview: { reviewRequired: false, calculationMatchesExpected: true,
+        checks: [{ id: 'next-increment-ten', passed: true }] },
+    })
+  })
+
+  it.each(['4, 6, 7', '4, 6, 18', '4, 8'])('still flags an incorrect or missing increment in “differ by %s”', differences => {
+    const value = incrementResult()
+    value.answer!.workedExplanation = [
+      `Reading clockwise, the values differ by ${differences}.`,
+      'The next difference is 10.',
+      '26 + 10 = 36.',
+    ]
+    value.answer!.numericPattern = { observedValues: [8, 12, 18, 26], rule: 'constant_second_difference' }
+    expect(scoreAptitude(fixture('visual-star-increasing-differences'), value)).toMatchObject({
+      answerCorrect: true,
+      evidenceReview: { reviewRequired: true, calculationMatchesExpected: true,
+        checks: [{ id: 'next-increment-ten', passed: false }] },
+    })
+  })
+
+  it('requires the next increment of ten even when “differ by” lists the earlier increments correctly', () => {
+    const value = incrementResult()
+    value.answer!.workedExplanation = ['The values differ by 4, 6, 8.', 'The next difference is 8.']
+    value.answer!.calculation = null
+    expect(scoreAptitude(fixture('visual-star-increasing-differences'), value)).toMatchObject({
+      answerCorrect: true,
+      evidenceReview: { reviewRequired: true, checks: [{ id: 'next-increment-ten', passed: false }] },
+    })
+  })
+
   it('scores recapture and genuine transformation ambiguity against distinct boundaries', () => {
     const value = starResult()
     value.answer = null; value.status = 'needs_capture'; value.message = 'The numerical labels are obscured.'

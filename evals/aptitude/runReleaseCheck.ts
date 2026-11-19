@@ -10,10 +10,12 @@ import { renderAptitudeFixture } from './render'
 import { selectAptitudeFixtures } from './selectFixtures'
 import { AptitudeEvaluationCallGuard, planAptitudeEvaluation } from './evaluationPlan'
 import { APTITUDE_RELEASE_FIXTURE_IDS, APTITUDE_RELEASE_MAX_CALLS, assessAptitudeReleaseFixture, inspectAptitudeReleaseReply, safeAptitudeProviderError, type AptitudeReleaseFixtureCheck, type AptitudeReleaseReplyDiagnostic } from './releaseGate'
+import { aptitudeReleaseLogLines } from './releaseLogging'
 import { aptitudeReleaseEnvironment } from '../../scripts/aptitude-release-environment.mjs'
 
 const hash = (value: string | Buffer) => createHash('sha256').update(value).digest('hex')
 const tokenCount = (value: unknown) => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null
+const log = (...input: Parameters<typeof aptitudeReleaseLogLines>) => aptitudeReleaseLogLines(...input).forEach(line => console.info(line))
 type Call = {
   modelId: string; requestedModel: string; returnedModel: string | null; provider: string;
   outcome: 'running' | 'returned' | 'error'; validated: boolean | null; durationMs: number | null;
@@ -39,7 +41,7 @@ function briefCandidate(candidate: AptitudeComparisonCandidate): BriefCandidate 
     answer: answer ? {
       labels: answer.selectedOptionIds.map(id => observation?.question?.options.find(option => option.id === id)?.label ?? '').map(label => label.slice(0, 80)),
       value: answer.value?.slice(0, 100) ?? null, summary: answer.summary.slice(0, 400),
-      evidence: answer.evidence.map(value => value.slice(0, 2_000)), workedExplanation: answer.workedExplanation.slice(0, 3).map(value => value.slice(0, 2_000)),
+      evidence: answer.evidence.map(value => value.slice(0, 2_000)), workedExplanation: answer.workedExplanation.map(value => value.slice(0, 2_000)),
       calculation: answer.calculation ? { expression: answer.calculation.expression.slice(0, 200), claimedValue: answer.calculation.claimedValue } : null,
       numericPattern: answer.numericPattern ? { observedValues: answer.numericPattern.observedValues, rule: answer.numericPattern.rule } : null,
     } : null,
@@ -142,13 +144,26 @@ it.skipIf(aptitudeReleaseEnvironment(process.env) === null)('blocks an enabled d
       } catch (error) { attempt.error = safeAptitudeProviderError(error, controller.signal.aborted) }
       finally {
         attempt.durationMs = Math.round(performance.now() - started); save()
-        console.info('[aptitude-release-fixture] ' + JSON.stringify({ fixtureId: attempt.fixtureId, passed: attempt.check?.passed ?? false,
-          validationDiagnostics: attempt.calls.map(call => ({ modelId: call.modelId, validated: call.validated, diagnostic: call.validationDiagnostic })),
+        log('fixture', { fixtureId: attempt.fixtureId }, { passed: attempt.check?.passed ?? false,
           failures: attempt.check?.failures ?? [], error: attempt.error, durationMs: attempt.durationMs,
-          conservativeAbstention: attempt.check?.conservativeAbstention ?? false,
-          candidates: attempt.check?.passed ? attempt.candidates.map(({ modelId, status, durationMs }) => ({ modelId, status, durationMs })) : attempt.candidates,
-          calls: attempt.calls,
-        }))
+          conservativeAbstention: attempt.check?.conservativeAbstention ?? false })
+        const loggedModels = new Set([...attempt.calls.map(call => call.modelId), ...attempt.candidates.map(candidate => candidate.modelId)])
+        for (const modelId of loggedModels) {
+          const context = { fixtureId: attempt.fixtureId, modelId }
+          const candidate = attempt.candidates.find(candidate => candidate.modelId === modelId)
+          const check = attempt.check?.candidates.find(candidate => candidate.modelId === modelId)
+          const answer = candidate?.answer
+          log('candidate', context, { calls: attempt.calls.filter(call => call.modelId === modelId),
+            status: candidate?.status ?? null, observationStatus: candidate?.observationStatus ?? null,
+            answer: answer ? { labels: answer.labels, value: answer.value, summary: answer.summary,
+              calculation: answer.calculation, numericPattern: answer.numericPattern } : null })
+          log('score', context, { passed: check?.passed ?? false,
+            failures: attempt.check?.failures.filter(failure => failure.modelId === modelId) ?? [], score: check?.score ?? null })
+          // Only schema-validated, displayed evidence and worked steps for original fixtures.
+          // Separate events preserve each item and its model even when a later item is long.
+          answer?.evidence.forEach((text, index) => log('evidence', { ...context, item: index + 1 }, { text }))
+          answer?.workedExplanation.forEach((text, index) => log('explanation', { ...context, item: index + 1 }, { text }))
+        }
       }
     }
     const objective = report.attempts.filter(attempt => attempt.expectedStatus === 'solved')
@@ -174,9 +189,9 @@ it.skipIf(aptitudeReleaseEnvironment(process.env) === null)('blocks an enabled d
   } finally {
     clearTimeout(deadline); controller.abort(); process.removeListener('SIGINT', interrupt); process.removeListener('SIGTERM', interrupt)
     report.finishedAt = new Date().toISOString(); save()
-    console.info('[aptitude-release-summary] ' + JSON.stringify({ passed: report.passed, complete: report.complete, phase: report.phase,
+    log('summary', {}, { passed: report.passed, complete: report.complete, phase: report.phase,
       environment: report.environment, configuredModels: report.configuredModels, commit: report.commit, plannedCalls: report.plannedCalls, callsStarted: report.callsStarted,
-      summary: report.summary, failure: report.failure, report: '/aptitude-readiness.json' }))
+      summary: report.summary, failure: report.failure, report: '/aptitude-readiness.json' })
   }
   expect(report.passed, 'Aptitude release check failed. Inspect safe fixture logs and public/aptitude-readiness.json; no automatic retry was made.').toBe(true)
 })

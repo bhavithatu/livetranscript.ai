@@ -288,12 +288,17 @@ const list = (items: unknown) => ({ type: 'array', items })
 const strictObject = (properties: Record<string, unknown>) => ({ type: 'object', additionalProperties: false, properties, required: Object.keys(properties) })
 const questionSchema = strictObject({
   stem: textSchema, instructions: list(textSchema), passage: nullableTextSchema,
-  options: list(strictObject({ id: textSchema, label: textSchema, text: textSchema })),
-  responseType: { type: 'string', enum: ['single_choice', 'multiple_choice', 'free_response', 'unknown'] }, missingEvidence: list(textSchema),
+  options: { ...list(strictObject({ id: textSchema, label: textSchema,
+    text: { ...textSchema, description: 'Nonempty visible option text or a brief description of a fully readable picture option. Never blank or guessed.' } })),
+    description: 'Include every fully readable choice. For needs_capture, omit unreadable option entries and record their visible labels or locations in missingEvidence.' },
+  responseType: { type: 'string', enum: ['single_choice', 'multiple_choice', 'free_response', 'unknown'] },
+  missingEvidence: { ...list(textSchema), description: 'Specific missing or unreadable content, including visible labels or screen locations of omitted choices. Do not invent their content.' },
 })
 const answerSchema = strictObject({
   selectedOptionIds: list(textSchema), value: nullableTextSchema, unit: nullableTextSchema,
-  summary: textSchema, workedExplanation: list(textSchema), evidence: list(textSchema),
+  summary: textSchema,
+  workedExplanation: { ...list(textSchema), description: 'Normally 1–3 brief nonempty worked steps, never more than 6; at most 2000 characters per step.' },
+  evidence: { ...list(textSchema), description: '1–12 nonempty literal observations, each at most 2000 characters. Group panel rows or choice inventories when needed, retaining all relevant visible features and locations.' },
   calculation: { anyOf: [strictObject({ expression: textSchema, claimedValue: { type: 'number' }, decimalPlaces: { type: ['integer', 'null'] } }), { type: 'null' }] },
   numericPattern: { anyOf: [strictObject({ observedValues: list({ type: 'number' }), rule: { type: 'string', enum: ['constant_difference', 'constant_second_difference', 'constant_ratio'] } }), { type: 'null' }] },
 })

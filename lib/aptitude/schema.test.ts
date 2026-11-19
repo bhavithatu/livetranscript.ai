@@ -25,6 +25,44 @@ describe('aptitude wire contract', () => {
     expect(parseAptitudeObservation({ ...solvedObservation(), status: 'needs_capture', answer: null, message: 'Passage missing.' }).answer).toBeNull()
     expect(() => parseAptitudeObservation({ ...solvedObservation(), status: 'ambiguous', answer: null })).toThrow()
   })
+  it('retains readable choices and missing choice locations without blank option placeholders', () => {
+    const item = solvedObservation()
+    item.status = 'needs_capture'
+    item.answer = null
+    item.message = 'Capture the complete question and choices.'
+    item.question!.options = [item.question!.options[0]]
+    item.question!.missingEvidence = ['Choice B at the lower right is cut off; only its label is readable.']
+    const parsed = parseAptitudeObservation(item)
+    expect(parsed.question?.options).toEqual([{ id: 'A', label: 'A', text: '20%' }])
+    expect(parsed.question?.missingEvidence).toEqual(item.question!.missingEvidence)
+    expect(parsed.answer).toBeNull()
+    item.question!.options.push({ id: 'B', label: 'B', text: '' })
+    expect(() => parseAptitudeObservation(item)).toThrow('Invalid option text')
+  })
+  it('preserves a complete panel and choice inventory by grouping within the evidence limit', () => {
+    const item = solvedObservation()
+    item.category = 'abstract'
+    item.question!.stem = 'Which panel completes the pattern?'
+    item.question!.options = ['r1c1', 'r1c2', 'r1c3', 'r2c1'].map((cell, index) => ({
+      id: String.fromCharCode(65 + index), label: String.fromCharCode(65 + index), text: `One filled cell at ${cell}.`,
+    }))
+    item.answer!.selectedOptionIds = ['C']
+    item.answer!.value = null
+    item.answer!.unit = null
+    item.answer!.summary = 'C: the filled cell is at r1c3.'
+    item.answer!.calculation = null
+    item.answer!.workedExplanation = ['In each complete row, the filled cell advances from r1c1 to r1c2 to r1c3.', 'The last panel completes the same progression, matching choice C.']
+    const panels = Array.from({ length: 8 }, (_, index) => `panel r${Math.floor(index / 3) + 1}c${index % 3 + 1}: filled cell r1c${index % 3 + 1}`)
+    const inventory = [...panels, 'panel r3c3: question mark', ...item.question!.options.map(option => `choice ${option.label}: ${option.text}`)]
+    item.answer!.evidence = inventory
+    expect(() => parseAptitudeObservation(item)).toThrow('Invalid answer evidence')
+    item.answer!.evidence = [inventory.slice(0, 3).join('; '), inventory.slice(3, 6).join('; '), inventory.slice(6, 9).join('; '), inventory.slice(9).join('; ')]
+    const parsed = parseAptitudeObservation(item)
+    expect(parsed.answer!.evidence.join('; ')).toBe(inventory.join('; '))
+    expect(parsed.answer!.selectedOptionIds).toEqual(['C'])
+    item.answer!.workedExplanation = Array.from({ length: 7 }, (_, index) => `Step ${index + 1}`)
+    expect(() => parseAptitudeObservation(item)).toThrow('Invalid worked explanation')
+  })
   it('does not manufacture objective personality or situational-judgment answers', () => {
     for (const category of ['personality', 'situational_judgment', 'unknown']) expect(() => parseAptitudeObservation({ ...solvedObservation(), category })).toThrow()
   })

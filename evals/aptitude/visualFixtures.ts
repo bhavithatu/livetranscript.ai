@@ -21,7 +21,7 @@ export const APTITUDE_VISUAL_FIXTURES: readonly AptitudeFixture[] = [
     expected: { category: 'abstract', status: 'solved', selectedLabels: ['B'], criticalText: ['8', '12', '18', '26'],
       optionTextByLabel: { A: '34', B: '36', C: '38', D: '32' }, calculationValue: 36,
       evidenceChecks: [{ id: 'next-increment-ten', description: 'Recognizes successive differences 4, 6, 8 and next difference 10.',
-        allPatterns: ['(?:\\+\\s*4|difference[^.]*4|increase[^.]*4|increments?[^.]*4)', '(?:\\+\\s*6|difference[^.]*6|increase[^.]*6|increments?[^.]*6)', '(?:\\+\\s*8|difference[^.]*8|increase[^.]*8|increments?[^.]*8)', '(?:26\\s*\\+\\s*10|10\\s*\\+\\s*26|next[^.]*10|increment[^.]*10)'],
+        allPatterns: ['(?:\\+\\s*4|difference[^.]*4|\\bdiffers?\\s+by\\b[^.]*\\b4\\b|increase[^.]*4|increments?[^.]*4)', '(?:\\+\\s*6|difference[^.]*6|\\bdiffers?\\s+by\\b[^.]*\\b6\\b|increase[^.]*6|increments?[^.]*6)', '(?:\\+\\s*8|difference[^.]*8|\\bdiffers?\\s+by\\b[^.]*\\b8\\b|increase[^.]*8|increments?[^.]*8)', '(?:26\\s*\\+\\s*10|10\\s*\\+\\s*26|next[^.]*10|increment[^.]*10)'],
         forbiddenPatterns: ['26\\s*\\+\\s*8\\s*=\\s*34'] }],
     } },
   { id: 'visual-grid-quarter-turns', split: 'held_out',
