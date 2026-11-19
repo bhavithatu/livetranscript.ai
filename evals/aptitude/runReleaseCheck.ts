@@ -9,7 +9,7 @@ import { APTITUDE_FIXTURES } from './fixtures'
 import { renderAptitudeFixture } from './render'
 import { selectAptitudeFixtures } from './selectFixtures'
 import { AptitudeEvaluationCallGuard, planAptitudeEvaluation } from './evaluationPlan'
-import { APTITUDE_RELEASE_FIXTURE_IDS, APTITUDE_RELEASE_MAX_CALLS, assessAptitudeReleaseFixture, safeAptitudeProviderError, type AptitudeReleaseFixtureCheck } from './releaseGate'
+import { APTITUDE_RELEASE_FIXTURE_IDS, APTITUDE_RELEASE_MAX_CALLS, assessAptitudeReleaseFixture, inspectAptitudeReleaseReply, safeAptitudeProviderError, type AptitudeReleaseFixtureCheck, type AptitudeReleaseReplyDiagnostic } from './releaseGate'
 import { aptitudeReleaseEnvironment } from '../../scripts/aptitude-release-environment.mjs'
 
 const hash = (value: string | Buffer) => createHash('sha256').update(value).digest('hex')
@@ -18,6 +18,7 @@ type Call = {
   modelId: string; requestedModel: string; returnedModel: string | null; provider: string;
   outcome: 'running' | 'returned' | 'error'; validated: boolean | null; durationMs: number | null;
   inputTokens: number | null; outputTokens: number | null; error: { code: string; status: number | null } | null;
+  validationDiagnostic: AptitudeReleaseReplyDiagnostic | null;
 }
 type BriefCandidate = {
   modelId: string; model: string | null; status: string; durationMs: number;
@@ -110,7 +111,7 @@ it.skipIf(aptitudeReleaseEnvironment(process.env) === null)('blocks an enabled d
             report.liveModel = true
             const call: Call = { modelId: input.candidate.id, requestedModel: input.candidate.model, returnedModel: null,
               provider: input.candidate.provider, outcome: 'running', validated: null, durationMs: null,
-              inputTokens: null, outputTokens: null, error: null }
+              inputTokens: null, outputTokens: null, error: null, validationDiagnostic: null }
             attempt.calls.push(call); save()
             const callStarted = performance.now()
             try {
@@ -118,6 +119,9 @@ it.skipIf(aptitudeReleaseEnvironment(process.env) === null)('blocks an enabled d
               call.returnedModel = /^[A-Za-z0-9._:/-]{1,200}$/.test(reply.model) ? reply.model : 'INVALID_MODEL_ID'
               call.inputTokens = tokenCount(reply.inputTokens); call.outputTokens = tokenCount(reply.outputTokens)
               call.outcome = 'returned'
+              // Inspect without changing, repairing, rejecting or replacing the reply.
+              // The production analyzer below still performs its own normal validation.
+              call.validationDiagnostic = inspectAptitudeReleaseReply(reply.text)
               return reply
             } catch (error) {
               call.outcome = 'error'; call.error = safeAptitudeProviderError(error, input.signal.aborted)
@@ -139,6 +143,7 @@ it.skipIf(aptitudeReleaseEnvironment(process.env) === null)('blocks an enabled d
       finally {
         attempt.durationMs = Math.round(performance.now() - started); save()
         console.info('[aptitude-release-fixture] ' + JSON.stringify({ fixtureId: attempt.fixtureId, passed: attempt.check?.passed ?? false,
+          validationDiagnostics: attempt.calls.map(call => ({ modelId: call.modelId, validated: call.validated, diagnostic: call.validationDiagnostic })),
           failures: attempt.check?.failures ?? [], error: attempt.error, durationMs: attempt.durationMs,
           conservativeAbstention: attempt.check?.conservativeAbstention ?? false,
           candidates: attempt.check?.passed ? attempt.candidates.map(({ modelId, status, durationMs }) => ({ modelId, status, durationMs })) : attempt.candidates,

@@ -1,4 +1,4 @@
-import { parseAptitudeResult, type AptitudeResult } from '@/lib/aptitude/schema'
+import { AptitudeValidationError, parseAptitudeObservation, parseAptitudeResult, type AptitudeResult } from '@/lib/aptitude/schema'
 import type { AptitudeFixture } from './fixtures'
 import { scoreAptitude, scoreAptitudeComparison, type AptitudeScore } from './score'
 
@@ -15,6 +15,33 @@ export type AptitudeReleaseFixtureCheck = {
   conservativeAbstention: boolean
   publishedAnswerCorrect: boolean | null
   candidates: { modelId: string; passed: boolean; score: AptitudeScore | null }[]
+}
+
+export type AptitudeReleaseReplyDiagnostic = {
+  code: 'VALID' | 'INVALID_SCHEMA' | 'INVALID_JSON'
+  validationMessage: string | null
+  structuralCounts: { evidenceItems: number | null; workedSteps: number | null; options: number | null }
+}
+
+/** Release diagnostics only: retain controlled validation messages and counts, never raw provider output. */
+export function inspectAptitudeReleaseReply(text: string): AptitudeReleaseReplyDiagnostic {
+  const structuralCounts = { evidenceItems: null as number | null, workedSteps: null as number | null, options: null as number | null }
+  try {
+    const raw: unknown = JSON.parse(text)
+    const item = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : {}
+    const answer = item.answer && typeof item.answer === 'object' && !Array.isArray(item.answer) ? item.answer as Record<string, unknown> : {}
+    const question = item.question && typeof item.question === 'object' && !Array.isArray(item.question) ? item.question as Record<string, unknown> : {}
+    structuralCounts.evidenceItems = Array.isArray(answer.evidence) ? answer.evidence.length : null
+    structuralCounts.workedSteps = Array.isArray(answer.workedExplanation) ? answer.workedExplanation.length : null
+    structuralCounts.options = Array.isArray(question.options) ? question.options.length : null
+    parseAptitudeObservation(raw)
+    return { code: 'VALID', validationMessage: null, structuralCounts }
+  } catch (error) {
+    if (error instanceof AptitudeValidationError) {
+      return { code: 'INVALID_SCHEMA', validationMessage: error.message.slice(0, 200), structuralCounts }
+    }
+    return { code: 'INVALID_JSON', validationMessage: null, structuralCounts }
+  }
 }
 
 /** Independent fixture truth is used only after the production path returns. */

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { selectAptitudeComparison } from '@/lib/aptitude/comparison'
 import { parseAptitudeResult, type AptitudeComparisonCandidate, type AptitudeObservation } from '@/lib/aptitude/schema'
 import { APTITUDE_FIXTURES } from './fixtures'
-import { APTITUDE_RELEASE_FIXTURE_IDS, APTITUDE_RELEASE_MAX_CALLS, assessAptitudeReleaseFixture, safeAptitudeProviderError } from './releaseGate'
+import { APTITUDE_RELEASE_FIXTURE_IDS, APTITUDE_RELEASE_MAX_CALLS, assessAptitudeReleaseFixture, inspectAptitudeReleaseReply, safeAptitudeProviderError } from './releaseGate'
 import { AptitudeEvaluationCallGuard, planAptitudeEvaluation } from './evaluationPlan'
 import { aptitudeReleaseEnvironment } from '../../scripts/aptitude-release-environment.mjs'
 
@@ -153,5 +153,41 @@ describe('public release error sanitization', () => {
     expect(safeAptitudeProviderError({ name: 'APIConnectionTimeoutError' }).code).toBe('PROVIDER_TIMEOUT')
     expect(safeAptitudeProviderError(new Error('anything'), true).code).toBe('ABORTED_OR_DEADLINE')
     expect(safeAptitudeProviderError({ code: 'PROVIDER_UNAVAILABLE', status: 503 })).toEqual({ code: 'PROVIDER_UNAVAILABLE', status: 503 })
+  })
+})
+
+describe('release-only reply validation diagnostics', () => {
+  it('records structural counts for valid observations without retaining their contents', () => {
+    const raw = observation()
+    const text = JSON.stringify(raw)
+    expect(inspectAptitudeReleaseReply(text)).toEqual({ code: 'VALID', validationMessage: null,
+      structuralCounts: { evidenceItems: 1, workedSteps: 1, options: 4 } })
+    expect(JSON.stringify(raw)).toBe(text)
+  })
+
+  it('exposes the authored evidence-limit message and actual count without leaking any reply values', () => {
+    const raw = observation()
+    raw.answer!.evidence = Array.from({ length: 13 }, (_, index) => `PRIVATE_PROVIDER_CONTENT_${index}`)
+    const diagnostic = inspectAptitudeReleaseReply(JSON.stringify(raw))
+    expect(diagnostic).toEqual({ code: 'INVALID_SCHEMA', validationMessage: 'Invalid answer evidence',
+      structuralCounts: { evidenceItems: 13, workedSteps: 1, options: 4 } })
+    expect(JSON.stringify(diagnostic)).not.toContain('PRIVATE_PROVIDER_CONTENT')
+  })
+
+  it('distinguishes excess worked steps and option counts without relaxing schema limits', () => {
+    const raw = observation()
+    raw.answer!.workedExplanation = Array.from({ length: 7 }, () => 'PRIVATE')
+    expect(inspectAptitudeReleaseReply(JSON.stringify(raw))).toEqual({ code: 'INVALID_SCHEMA', validationMessage: 'Invalid worked explanation',
+      structuralCounts: { evidenceItems: 1, workedSteps: 7, options: 4 } })
+    raw.question!.options = Array.from({ length: 21 }, (_, index) => ({ id: String(index), label: String(index), text: 'PRIVATE' }))
+    expect(inspectAptitudeReleaseReply(JSON.stringify(raw))).toEqual({ code: 'INVALID_SCHEMA', validationMessage: 'Invalid options',
+      structuralCounts: { evidenceItems: 1, workedSteps: 7, options: 21 } })
+  })
+
+  it('does not expose JSON exception messages or malformed raw output', () => {
+    const diagnostic = inspectAptitudeReleaseReply('{"PRIVATE_PROVIDER_CONTENT": invalid}')
+    expect(diagnostic).toEqual({ code: 'INVALID_JSON', validationMessage: null,
+      structuralCounts: { evidenceItems: null, workedSteps: null, options: null } })
+    expect(JSON.stringify(diagnostic)).not.toContain('PRIVATE_PROVIDER_CONTENT')
   })
 })

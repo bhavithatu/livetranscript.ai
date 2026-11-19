@@ -138,7 +138,7 @@ def comparison_response_for(body, decision):
     result['durationMs'] = 0
     result['comparison'] = {
         'decision': 'disagreement' if decision == 'evidence_mismatch' else decision, 'selectedModelId': selected['modelId'] if selected else None,
-        'agreementCount': 2 if resolved else 1,
+        'agreementCount': 2 if resolved else (0 if decision == 'evidence_mismatch' else 1),
         'notes': ['Sample model responses for this screen preview. No live provider calls or model latency benchmark.',
                   'Agreement does not prove correctness. Models may share the same reading or reasoning mistake.'],
         'candidates': candidates,
