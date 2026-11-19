@@ -17,6 +17,18 @@ const scopedInventory = [
   "Row 3: panel c1 filled r2c2,r2c3,r3c3; panel c2 filled r2c2,r3c1,r3c2; panel c3 is '?'.",
   'Options: A filled r1c2,r1c3,r2c2; B filled r2c2,r2c3,r3c3; C filled r2c2,r3c1,r3c2; D filled r1c1,r2c1,r2c2.',
 ]
+const sourceHeadingInventory = [
+  'Source row 1: panel r1c1 filled cells r1c1, r2c1, r2c2; panel r1c2 filled cells r1c2, r1c3, r2c2; panel r1c3 filled cells r2c2, r2c3, r3c3.',
+  'Source row 2: panel r2c1 filled cells r1c2, r1c3, r2c2; panel r2c2 filled cells r2c2, r2c3, r3c3; panel r2c3 filled cells r2c2, r3c1, r3c2.',
+  'Source row 3: panel r3c1 filled cells r2c2, r2c3, r3c3; panel r3c2 filled cells r2c2, r3c1, r3c2; panel r3c3 contains a question mark.',
+  'Choices, left to right: A filled cells r1c2, r1c3, r2c2; B filled cells r2c2, r2c3, r3c3; C filled cells r2c2, r3c1, r3c2; D filled cells r1c1, r2c1, r2c2.',
+]
+const scopedAliasInventory = [
+  'Row 1: panel c1 filled r1c1, r2c1, r2c2; panel c2 filled r1c2, r1c3, r2c2; panel c3 filled r2c2, r2c3, r3c3.',
+  'Row 2: panel c1 filled r1c2, r1c3, r2c2; panel c2 filled r2c2, r2c3, r3c3; panel c3 filled r2c2, r3c1, r3c2.',
+  "Row 3: panel c1 filled r2c2, r2c3, r3c3; panel c2 filled r2c2, r3c1, r3c2; panel c3 (r3c3) shows '?'.",
+  'Choices: A filled r1c2, r1c3, r2c2; B filled r2c2, r2c3, r3c3; C filled r2c2, r3c1, r3c2; D filled r1c1, r2c1, r2c2.',
+]
 const fixture = APTITUDE_FIXTURES.find(item => item.id === 'visual-grid-quarter-turns')!
 function result(evidence = explicitInventory): AptitudeResult {
   return {
@@ -32,6 +44,55 @@ function result(evidence = explicitInventory): AptitudeResult {
 const review = (value: AptitudeResult) => scoreAptitude(fixture, value).evidenceReview
 
 describe('quarter-turn grid literal inventory rubric', () => {
+  it.each([
+    { format: 'source-row and ordered-choice headings', inventory: sourceHeadingInventory },
+    { format: 'row-scoped labels with a redundant panel coordinate', inventory: scopedAliasInventory },
+  ])('accepts the complete live $format without accepting damaged inventory', ({ inventory }) => {
+    expect(review(result(inventory))?.reviewRequired).toBe(false)
+    const corrupted = [...inventory]
+    corrupted[0] = corrupted[0].replace('r1c1, r2c1, r2c2', 'r1c1, r2c1, r3c2')
+    expect(review(result(corrupted))?.reviewRequired).toBe(true)
+    const missing = [...inventory]
+    missing[0] = missing[0].replace(/; panel (?:r1c2|c2) filled(?: cells)? r1c2, r1c3, r2c2/u, '')
+    expect(review(result(missing))?.reviewRequired).toBe(true)
+    const duplicate = [...inventory]
+    duplicate[0] += ' panel r1c2 filled cells r1c2, r1c3, r2c2.'
+    expect(review(result(duplicate))?.reviewRequired).toBe(true)
+    const wrongChoice = [...inventory]
+    wrongChoice[3] = wrongChoice[3].replace('r1c1, r2c1, r2c2', 'r1c2, r1c3, r2c2')
+    expect(review(result(wrongChoice))?.reviewRequired).toBe(true)
+  })
+
+  it('validates redundant coordinates as label aliases, never as unverified body text', () => {
+    const conflictingAlias = [...scopedAliasInventory]
+    conflictingAlias[2] = conflictingAlias[2].replace('(r3c3)', '(r3c2)')
+    expect(review(result(conflictingAlias))?.reviewRequired).toBe(true)
+    const knownPanelAlias = [...sourceHeadingInventory]
+    knownPanelAlias[0] = knownPanelAlias[0].replace('panel r1c1 filled', 'panel r1c1 (r1c1): filled')
+    expect(review(result(knownPanelAlias))?.reviewRequired).toBe(false)
+    knownPanelAlias[0] = knownPanelAlias[0].replace('(r1c1)', '(r1c2)')
+    expect(review(result(knownPanelAlias))?.reviewRequired).toBe(true)
+    const conflictingScope = [...sourceHeadingInventory]
+    conflictingScope[0] = conflictingScope[0].replace('Source row 1:', 'Source row 2:')
+    expect(review(result(conflictingScope))?.reviewRequired).toBe(true)
+  })
+
+  it.each(['Row', 'Source row', 'Panel row', 'Grid row', 'Matrix row', 'Source matrix row'])
+    ('preserves correctness under equivalent %s scope and list-heading formatting', rowHeading => {
+      for (const choiceHeading of ['Choices:', 'Options, left to right:', 'Choices (from left to right):', 'Answer options, top to bottom:']) {
+        const inventory = explicitInventory.map((item, index) => index < 3
+          ? item.replace(/^Panel row/u, rowHeading).replace(/\b(r\d+c\d+) (?=filled|shows)/gu, '$1 ($1): ')
+          : item.replace(/^Choices:/u, choiceHeading))
+        expect(review(result(inventory))?.reviewRequired, `${rowHeading} / ${choiceHeading}`).toBe(false)
+        const wrongCells = [...inventory]
+        wrongCells[0] = wrongCells[0].replace('filled cells r1c1, r2c1, r2c2', 'filled cells r1c1, r2c1, r3c2')
+        expect(review(result(wrongCells))?.reviewRequired).toBe(true)
+        const duplicateChoice = [...inventory]
+        duplicateChoice[3] = duplicateChoice[3].replace('A filled cells', 'B filled cells')
+        expect(review(result(duplicateChoice))?.reviewRequired).toBe(true)
+      }
+    })
+
   it.each([
     { format: 'explicit panel coordinates', inventory: explicitInventory },
     { format: 'row-scoped panel labels', inventory: scopedInventory },

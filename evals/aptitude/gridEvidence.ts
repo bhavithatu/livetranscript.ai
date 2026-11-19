@@ -1,5 +1,11 @@
 import { ROTATION_PANELS } from './visualRender'
 
+// Headings and repeated label coordinates describe record scope, not cell
+// contents. Normalize only this bounded grammar; inventory bodies stay literal.
+const ROW_HEADING = /^(?:(?:source|panel|grid|matrix)\s+){0,2}row\s+(\d+)\s*:\s*/iu
+const CHOICE_HEADING = /^(?:answer\s+)?(?:choices|options)(?:\s*,\s*(?:from\s+)?(?:left\s+to\s+right|top\s+to\s+bottom)|\s*\(\s*(?:from\s+)?(?:left\s+to\s+right|top\s+to\s+bottom)\s*\))?\s*:\s*/iu
+const PANEL_ALIAS = /^\(\s*r\s*(\d+)\s*c\s*(\d+)\s*\)\s*:?\s*/iu
+
 /** Complete coordinates establish this fixture's rotation; null leaves the verbal fallback applicable. */
 export function hasCorrectRotationGridInventory(items: readonly string[]): boolean | null {
   // Once coordinates are supplied, a correct phrase cannot mask a defective inventory.
@@ -19,10 +25,10 @@ export function hasCorrectRotationGridInventory(items: readonly string[]): boole
     let panelsFilled = false
     let choicesFilled = false
     for (let clause of item.split(/[;.\n]/u).map(value => value.trim()).filter(Boolean)) {
-      const rowHeading = /^(?:panel\s+)?row\s+(\d+)\s*:\s*/iu.exec(clause)
+      const rowHeading = ROW_HEADING.exec(clause)
       if (rowHeading) { rowScope = rowHeading[1]; filledRow = rowScope; panelsFilled = false; choicesFilled = false; clause = clause.slice(rowHeading[0].length) }
-      if (/^(?:choices|options)\s*:/iu.test(clause)) { choicesFilled = false; panelsFilled = false; filledRow = null }
-      clause = clause.replace(/^(?:choices|options)\s*:\s*/iu, '')
+      const choiceHeading = CHOICE_HEADING.exec(clause)
+      if (choiceHeading) { choicesFilled = false; panelsFilled = false; filledRow = null; rowScope = null; clause = clause.slice(choiceHeading[0].length) }
       const explicit = /^(?:panel\s+)?r\s*(\d+)\s*c\s*(\d+)\b\s*:?\s*/iu.exec(clause)
       const scoped = /^panel\s+(?:c\s*)?(\d+)\b\s*:?\s*/iu.exec(clause)
       const choice = /^(?:(?:choice|option)\s+)?([A-Z])\b\s*:?\s*/iu.exec(clause)
@@ -30,11 +36,17 @@ export function hasCorrectRotationGridInventory(items: readonly string[]): boole
       if (!label) continue
       const key = explicit ? `panel:r${explicit[1]}c${explicit[2]}`
         : scoped ? `panel:r${rowScope}c${scoped[1]}` : `choice:${choice![1].toUpperCase()}`
+      if (explicit && rowScope !== null && explicit[1] !== rowScope) return false
       if (!expected.has(key) || seen.has(key)) return false
       seen.add(key)
-      const body = clause.slice(label[0].length).trim()
+      let body = clause.slice(label[0].length).trim()
       const target = expected.get(key)
       const isChoice = !explicit && !scoped
+      const alias = !isChoice ? PANEL_ALIAS.exec(body) : null
+      if (alias) {
+        if (key !== `panel:r${alias[1]}c${alias[2]}`) return false
+        body = body.slice(alias[0].length)
+      }
       if (!isChoice) {
         choicesFilled = false
         const sourceRow = explicit?.[1] ?? rowScope
