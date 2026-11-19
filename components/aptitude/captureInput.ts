@@ -2,6 +2,7 @@ import type { AptitudeCapture } from '@/lib/aptitude/captureDetector'
 import { aptitudeCaptureSize, encodeAptitudeCanvas } from '@/lib/aptitude/captureEncoding'
 
 const MAX_UPLOAD_BYTES = 4_400_000
+export const IMAGE_INPUT_STAGE_TIMEOUT_MS = 30_000
 
 function abortError() { return new DOMException('Image loading cancelled', 'AbortError') }
 
@@ -18,13 +19,65 @@ function readFile(file: File, signal: AbortSignal): Promise<string> {
   return new Promise((resolve, reject) => {
     if (signal.aborted) { reject(abortError()); return }
     const reader = new FileReader()
-    const cleanup = () => signal.removeEventListener('abort', cancel)
-    const cancel = () => { reader.abort(); cleanup(); reject(abortError()) }
-    reader.onload = () => { cleanup(); resolve(String(reader.result)) }
-    reader.onerror = () => { cleanup(); reject(new Error('This image could not be read. Choose another screenshot.')) }
-    reader.onabort = () => { cleanup(); reject(abortError()) }
+    let settled = false
+    const cleanup = () => {
+      clearTimeout(timer)
+      signal.removeEventListener('abort', cancel)
+      reader.onload = reader.onerror = reader.onabort = null
+    }
+    const fail = (error: Error, stop = false) => {
+      if (settled) return
+      settled = true
+      cleanup()
+      // Detach handlers before abort, which may synchronously fire onabort.
+      if (stop) { try { reader.abort() } catch { /* The reader may already be stopped. */ } }
+      reject(error)
+    }
+    const cancel = () => fail(abortError(), true)
+    const timer = setTimeout(() => fail(new Error('Reading the screenshot took too long. Choose the file again or use screen capture.'), true), IMAGE_INPUT_STAGE_TIMEOUT_MS)
+    reader.onload = () => {
+      if (settled) return
+      settled = true
+      cleanup()
+      resolve(String(reader.result))
+    }
+    reader.onerror = () => fail(new Error('This image could not be read. Choose another screenshot.'))
+    reader.onabort = () => fail(abortError())
     signal.addEventListener('abort', cancel, { once: true })
-    reader.readAsDataURL(file)
+    try { reader.readAsDataURL(file) }
+    catch { fail(new Error('This image could not be read. Choose another screenshot.'), true) }
+  })
+}
+
+function decodeImage(source: string, signal: AbortSignal): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) { reject(abortError()); return }
+    const img = new Image()
+    let settled = false
+    const cleanup = () => {
+      clearTimeout(timer)
+      signal.removeEventListener('abort', cancel)
+      img.onload = img.onerror = null
+    }
+    const fail = (error: Error) => {
+      if (settled) return
+      settled = true
+      cleanup()
+      img.removeAttribute('src')
+      reject(error)
+    }
+    const cancel = () => fail(abortError())
+    const timer = setTimeout(() => fail(new Error('Opening the screenshot took too long. Save it as a new PNG or JPEG, then choose it again, or use screen capture.')), IMAGE_INPUT_STAGE_TIMEOUT_MS)
+    img.onload = () => {
+      if (settled) return
+      settled = true
+      cleanup()
+      resolve(img)
+    }
+    img.onerror = () => fail(new Error('The file is not a readable image. Choose another screenshot.'))
+    signal.addEventListener('abort', cancel, { once: true })
+    try { img.src = source }
+    catch { fail(new Error('The file is not a readable image. Choose another screenshot.')) }
   })
 }
 
@@ -33,16 +86,7 @@ export async function readCaptureFile(file: File, signal: AbortSignal): Promise<
     throw new Error('Choose a PNG, JPEG or WebP screenshot smaller than 4.4 MB.')
   }
   const source = await readFile(file, signal)
-  const image = await new Promise<HTMLImageElement>((resolve, reject) => {
-    if (signal.aborted) { reject(abortError()); return }
-    const img = new Image()
-    const cleanup = () => signal.removeEventListener('abort', cancel)
-    const cancel = () => { cleanup(); img.src = ''; reject(abortError()) }
-    img.onload = () => { cleanup(); resolve(img) }
-    img.onerror = () => { cleanup(); reject(new Error('The file is not a readable image. Choose another screenshot.')) }
-    signal.addEventListener('abort', cancel, { once: true })
-    img.src = source
-  })
+  const image = await decodeImage(source, signal)
   if (signal.aborted) throw abortError()
   if (!image.naturalWidth || !image.naturalHeight) throw new Error('The screenshot is empty.')
   const size = aptitudeCaptureSize(image.naturalWidth, image.naturalHeight)
