@@ -17,16 +17,20 @@ export type AptitudeTransport = (input: AptitudeTransportInput) => Promise<Aptit
 export const defaultAptitudeTransport: AptitudeTransport = async ({ candidate, request, signal, env }) => {
   const apiKey = providerKey(candidate, env)
   if (!apiKey) throw new AptitudeServiceError('The selected aptitude provider is not configured.', 503, 'PROVIDER_UNAVAILABLE')
+  const settings = candidate.generation
   if (candidate.provider === 'anthropic') {
     const image = parseRepoImage(request.image)
     const client = new Anthropic({ apiKey, maxRetries: 0, timeout: 25_000 })
     const response = await client.messages.create({
-      model: candidate.model, max_tokens: 3_000, temperature: 0, system: APTITUDE_SYSTEM_PROMPT,
+      model: candidate.model, max_tokens: settings.maxOutputTokens, system: APTITUDE_SYSTEM_PROMPT,
+      ...(settings.temperature !== undefined ? { temperature: settings.temperature } : {}),
+      ...(settings.reasoningEffort ? { thinking: { type: 'adaptive' as const } } : {}),
       messages: [{ role: 'user', content: [
         { type: 'image', source: { type: 'base64', media_type: image.mediaType, data: image.data } },
         { type: 'text', text: aptitudeUserPrompt(request.category) },
       ] }],
-      output_config: { format: { type: 'json_schema', schema: APTITUDE_OBSERVATION_JSON_SCHEMA } },
+      output_config: { format: { type: 'json_schema', schema: APTITUDE_OBSERVATION_JSON_SCHEMA },
+        ...(settings.reasoningEffort ? { effort: settings.reasoningEffort } : {}) },
     }, { signal })
     if (response.stop_reason !== 'end_turn') throw new Error('Incomplete provider response')
     return { text: response.content.filter(block => block.type === 'text').map(block => block.text).join(''), model: response.model,
@@ -34,7 +38,9 @@ export const defaultAptitudeTransport: AptitudeTransport = async ({ candidate, r
   }
   const client = new OpenAI({ apiKey, maxRetries: 0, timeout: 25_000 })
   const response = await client.chat.completions.create({
-    model: candidate.model, temperature: 0, max_completion_tokens: 3_000,
+    model: candidate.model, max_completion_tokens: settings.maxOutputTokens,
+    ...(settings.temperature !== undefined ? { temperature: settings.temperature } : {}),
+    ...(settings.reasoningEffort ? { reasoning_effort: settings.reasoningEffort } : {}),
     messages: [{ role: 'system', content: APTITUDE_SYSTEM_PROMPT }, { role: 'user', content: [
       { type: 'image_url', image_url: { url: request.image, detail: 'high' } },
       { type: 'text', text: aptitudeUserPrompt(request.category) },

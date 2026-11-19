@@ -96,10 +96,29 @@ incorrect numeric rule application. Eight new original visual fixtures bring
 the evaluation set to twenty, including a paired large-page stress case,
 star-point counting, rotating and XOR grids, missing evidence and ambiguity.
 
-At this commit, the offline evaluation passes 33 tests (live inference and image
-preparation are separate opt-ins). Live diagram inference and native-browser
+The initial follow-up offline evaluation passed 33 tests (live inference and
+image preparation were separate opt-ins). Live diagram inference and native-browser
 verification must be recorded separately after deployment. A passing offline
 scorer or stubbed browser workflow is not a measurement of model accuracy.
+
+The first follow-up CI run passed all 1,232 unit tests but exposed an obsolete
+browser-test assumption: a reuploaded PNG now retains identical bytes, so the
+session correctly reuses its existing analysis. The browser test now checks that
+reuse explicitly, then uses a genuinely distinct owned image for history tests.
+It also re-pins a saved result after an explicit source change before checking
+that automatic captures preserve the selected history view.
+
+Production builds now run a bounded four-image Aptitude acceptance check through
+the actual provider path before `next build`. It tests all two or three configured
+comparison models with eight or twelve calls, without retries or fallback. Wrong
+answers, invalid responses, incomplete-capture guessing and failed evidence
+rubrics block the build. An explicitly enabled branch preview can run the same
+check; normal local, CI and preview builds make no Aptitude provider calls.
+`/aptitude-readiness.json` records the deployed commit, model identities, calls,
+candidate correctness, evidence review and measured latency. Conservative source
+reconciliation is reported separately from a correct published selection. This
+small original-fixture check is a release regression gate, not a general model
+accuracy estimate or verification of a user's browser/device.
 
 Clients should reload after this release: new clients accept older responses,
 but an already-open old bundle rejects the new optional numeric-pattern field.

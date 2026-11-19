@@ -247,7 +247,9 @@ async def main():
 
             await page.get_by_label('Upload aptitude screenshot', exact=True).set_input_files(str(upload))
             await expect(page.get_by_text('Screenshot ready. Select Analyze this capture when you are ready.', exact=True)).to_be_visible()
-            await click_for_request(page.get_by_role('button', name='Analyze this capture', exact=True))
+            await expect(preview).to_have_attribute('src', sample)
+            identical_upload_count = len(requests)
+            await page.get_by_role('button', name='Analyze this capture', exact=True).click()
             await expect(page.get_by_role('heading', name='B — 25%', exact=True)).to_be_visible()
             # Playwright's exact label matcher includes all descendant option
             # text from this wrapping label. Scope to the history's unique
@@ -256,6 +258,35 @@ async def main():
             history_select = page.get_by_role('region', name='Question history', exact=True).get_by_role('combobox')
             await expect(history_select).to_have_count(1)
             history_options = history_select.locator('option[value]:not([value=""])')
+            await expect(history_options).to_have_count(1)
+            await asyncio.sleep(.3)
+            assert len(requests) == identical_upload_count, 'Uploading identical PNG bytes should reuse the existing validated answer'
+            assert await history_options.evaluate_all('(items)=>items.map(x=>x.value)') == [requests[0]['captureId']], 'Identical upload must not create duplicate question history'
+            report['checks'].append('Identical lossless PNG upload reuses the validated answer and existing history without a provider request')
+
+            # A genuine second image, not an incidental JPEG transcode difference:
+            # add a visible banner above the same complete owned practice question.
+            distinct_sample = await page.evaluate('''async (original) => {
+                const image = new Image(); image.src = original; await image.decode();
+                const canvas = document.createElement('canvas');
+                canvas.width = image.naturalWidth; canvas.height = image.naturalHeight + 72;
+                const context = canvas.getContext('2d');
+                context.fillStyle = '#ffffff'; context.fillRect(0, 0, canvas.width, canvas.height);
+                context.drawImage(image, 0, 72);
+                context.fillStyle = '#e0e7ff'; context.fillRect(0, 0, canvas.width, 72);
+                context.fillStyle = '#312e81'; context.font = 'bold 26px sans-serif';
+                context.fillText('Uploaded fixture', 54, 46);
+                return canvas.toDataURL('image/png');
+            }''', sample)
+            distinct_upload = OUT / 'owned-distinct-upload.png'
+            distinct_upload.write_bytes(base64.b64decode(distinct_sample.split(',', 1)[1]))
+            assert distinct_sample != sample
+            await page.get_by_label('Upload aptitude screenshot', exact=True).set_input_files(str(distinct_upload))
+            await expect(preview).not_to_have_attribute('src', sample)
+            await expect(page.get_by_text('Screenshot ready. Select Analyze this capture when you are ready.', exact=True)).to_be_visible()
+            await click_for_request(page.get_by_role('button', name='Analyze this capture', exact=True))
+            await expect(page.get_by_role('heading', name='B — 25%', exact=True)).to_be_visible()
+            assert requests[-1]['imageHash'] != requests[0]['imageHash'], 'The second upload must contain genuinely different pixels'
             choices = await history_options.evaluate_all('(items)=>items.map(x=>x.value)')
             expected_choices = [requests[-1]['captureId'], requests[0]['captureId']]
             report['uploadedHistory'] = {'actualCaptureIds': choices, 'expectedCaptureIds': expected_choices}
@@ -279,6 +310,13 @@ async def main():
             state['number'] = 1
             await page.get_by_role('button', name='Share screen', exact=True).click()
             await expect(page.get_by_role('button', name='Start automatic capture', exact=True)).to_be_visible()
+            await expect(page.get_by_role('button', name='Follow latest', exact=True)).to_have_count(0)
+            await expect(preview).to_be_visible()
+            await expect(saved_preview).to_have_count(0)
+            # Explicitly selecting a new source returns to its latest preview.
+            # Pin the old result again to test background automatic capture while reviewing history.
+            await history_select.select_option(choices[-1])
+            await expect(saved_preview).to_have_attribute('src', sample)
             baseline = len(requests)
             await page.get_by_role('button', name='Start automatic capture', exact=True).click()
             await wait_for_requests(baseline + 1)
@@ -394,6 +432,7 @@ async def main():
             await strategy.select_option('compare')
             await page.get_by_role('button', name='Analyze this capture', exact=True).click()
             await expect(comparison.get_by_role('heading', name='Models agree', exact=True)).to_be_visible()
+            await asyncio.sleep(.2)
             assert len(requests) == count, 'Returning to the same completed comparison should reuse only that strategy'
             report['checks'].append('Single and comparison analyses remain distinct in history and exact-image reuse')
 

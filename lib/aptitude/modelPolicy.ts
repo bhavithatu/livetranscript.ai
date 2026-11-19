@@ -1,12 +1,24 @@
 export type AptitudeProvider = 'anthropic' | 'openai'
-export type AptitudeModel = { id: string; provider: AptitudeProvider; model: string; imageInput: true; structuredOutput: true }
+export type AptitudeGenerationSettings = { maxOutputTokens: 3_000 | 6_000; temperature?: 0; reasoningEffort?: 'high' }
+export type AptitudeModel = { id: string; provider: AptitudeProvider; model: string; imageInput: true; structuredOutput: true; generation: AptitudeGenerationSettings }
+
+const legacyGeneration: AptitudeGenerationSettings = { maxOutputTokens: 3_000, temperature: 0 }
+// Challenger profiles are opt-in, not benchmark winners or new defaults. Thinking shares
+// this output cap and the existing 25-second deadline. No automatic retry is added.
+// Sonnet5.5 rejects temperature; use adaptive thinking plus output_config.effort:
+// https://platform.claude.com/docs/en/models/sonnet-5-5/migration-guide
+// GPT6 Sol supports image input, strict outputs and reasoning_effort in Chat Completions:
+// https://developers.openai.com/api/docs/models/gpt-6-sol
+const reasoningGeneration: AptitudeGenerationSettings = { maxOutputTokens: 6_000, reasoningEffort: 'high' }
 
 /** Explicit capability allowlist, not a benchmark ranking. See evals/aptitude/README.md. */
 export const APTITUDE_MODELS: readonly AptitudeModel[] = [
-  { id: 'anthropic:claude-sonnet-4-5', provider: 'anthropic', model: 'claude-sonnet-4-5', imageInput: true, structuredOutput: true },
-  { id: 'anthropic:claude-haiku-4-5', provider: 'anthropic', model: 'claude-haiku-4-5', imageInput: true, structuredOutput: true },
-  { id: 'openai:gpt-4.1', provider: 'openai', model: 'gpt-4.1', imageInput: true, structuredOutput: true },
-  { id: 'openai:gpt-4.1-mini', provider: 'openai', model: 'gpt-4.1-mini', imageInput: true, structuredOutput: true },
+  { id: 'anthropic:claude-sonnet-4-5', provider: 'anthropic', model: 'claude-sonnet-4-5', imageInput: true, structuredOutput: true, generation: legacyGeneration },
+  { id: 'anthropic:claude-haiku-4-5', provider: 'anthropic', model: 'claude-haiku-4-5', imageInput: true, structuredOutput: true, generation: legacyGeneration },
+  { id: 'openai:gpt-4.1', provider: 'openai', model: 'gpt-4.1', imageInput: true, structuredOutput: true, generation: legacyGeneration },
+  { id: 'openai:gpt-4.1-mini', provider: 'openai', model: 'gpt-4.1-mini', imageInput: true, structuredOutput: true, generation: legacyGeneration },
+  { id: 'anthropic:claude-sonnet-5-5', provider: 'anthropic', model: 'claude-sonnet-5-5', imageInput: true, structuredOutput: true, generation: reasoningGeneration },
+  { id: 'openai:gpt-6-sol', provider: 'openai', model: 'gpt-6-sol', imageInput: true, structuredOutput: true, generation: reasoningGeneration },
 ] as const
 
 export type AptitudeEnvironment = Record<string, string | undefined>
