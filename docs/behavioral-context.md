@@ -91,4 +91,8 @@ The report includes the exact authored evidence, questions, responses, latency, 
 
 During a deployment build, `sourceCommit` contains the validated full `VERCEL_GIT_COMMIT_SHA` when available. Console output uses compact JSON split into numbered `[behavioral-consistency-eval] [part N/T] ...` events, each no larger than 2,000 UTF-8 bytes. To reconstruct a report, retrieve the deployment’s report events, verify that every part from 1 through T is present exactly once, sort by part number, concatenate the text after each marker, and parse the resulting JSON. If any part is missing or conflicting, the report is incomplete and must not be treated as a verified result. The optional report file remains complete, formatted JSON; no report is published to a public route.
 
-No live model results are claimed by this document. Deployment/browser verification and any separately reviewed model runs should be recorded with their actual commit and evidence after they occur.
+### Recorded model run, November 19, 2026
+
+The initial production-build regression used the configured Behavioral primary, `anthropic:claude-sonnet-5`, with exactly six direct calls against commit `5390d5e134189f902ba6ad345af067a1fb09a730`. All six completed without provider or stream failure. Assistant review against the authored source criteria found five passing cases and one failure: the reverse-worded personality item escalated an ordinary Agree preference into Strongly disagree without supporting personal evidence.
+
+The complete questions, source snapshots, responses, timings and review are retained in `docs/behavioral-consistency-regression-2026-11-19.json`. This is a small authored regression, not an independent accuracy estimate or a review of the user's assessment answers. The failure led to an explicit instruction to preserve response strength and frequency; a targeted follow-up run is recorded separately after execution. The initial failure remains in the report.

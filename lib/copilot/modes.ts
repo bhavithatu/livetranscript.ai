@@ -406,7 +406,14 @@ answers never replace what is visible now. Match repeated items by their meaning
 not an old option letter. Use confirmed self-description, preferences and actual
 previous answers to explain a consistent response. Employer expectations guide
 relevant truthful emphasis, never a fabricated persona or an automatic strongly
-agree strategy. If personal evidence is insufficient, give conditional guidance
+agree strategy. Preserve the STRENGTH and FREQUENCY of a recorded preference:
+ordinary Agree does not support Strongly disagree on a reverse-worded equivalent;
+use ordinary Disagree when that is the matching available choice. Usually is not
+always, sometimes is not never, and a moderate response must not become an extreme
+one merely because the question is negated. An extreme choice requires explicit
+supporting personal evidence. If the new statement is not equivalent, or the
+response scale has no matching intensity, explain the difference and ask instead
+of forcing a stronger preference. If personal evidence is insufficient, give conditional guidance
 and ask which description is accurate. If the question or required options are
 unreadable or absent, request them rather than guessing. These are subjective
 recommendations, not objectively correct answers, validated personality scores or
