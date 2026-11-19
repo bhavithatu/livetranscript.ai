@@ -3,7 +3,7 @@ export type AptitudeGenerationSettings = { maxOutputTokens: 3_000 | 6_000; tempe
 export type AptitudeModel = { id: string; provider: AptitudeProvider; model: string; imageInput: true; structuredOutput: true; generation: AptitudeGenerationSettings }
 
 const legacyGeneration: AptitudeGenerationSettings = { maxOutputTokens: 3_000, temperature: 0 }
-// Challenger profiles are opt-in, not benchmark winners or new defaults. Thinking shares
+// Reasoning profiles use the tested provider contracts. Thinking shares
 // this output cap and the existing 25-second deadline. No automatic retry is added.
 // Sonnet5.5 rejects temperature; use adaptive thinking plus output_config.effort:
 // https://platform.claude.com/docs/en/models/sonnet-5-5/migration-guide
@@ -39,7 +39,7 @@ export function providerKey(candidate: AptitudeModel, env: AptitudeEnvironment):
   return env[candidate.provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'OPENAI_API_KEY']?.trim() || undefined
 }
 export function configuredAptitudeModels(env: AptitudeEnvironment = process.env): AptitudeModel[] {
-  const primary = env.APTITUDE_MODEL?.trim() || (env.ANTHROPIC_API_KEY?.trim() ? 'anthropic:claude-sonnet-4-5' : 'openai:gpt-4.1')
+  const primary = env.APTITUDE_MODEL?.trim() || (!env.OPENAI_API_KEY?.trim() && env.ANTHROPIC_API_KEY?.trim() ? 'anthropic:claude-sonnet-5-5' : 'openai:gpt-6.2-sol')
   const ids = [...new Set([primary, ...(env.APTITUDE_FALLBACK_MODELS ?? '').split(',').map(x => x.trim()).filter(Boolean)])]
   if (ids.length > 3) throw new AptitudeServiceError('Configure at most two aptitude fallback models.', 503, 'MODEL_CONFIGURATION')
   const candidates = ids.map(aptitudeModel)
@@ -49,7 +49,7 @@ export function configuredAptitudeModels(env: AptitudeEnvironment = process.env)
   return candidates
 }
 
-export const DEFAULT_APTITUDE_COMPARISON_MODELS = ['anthropic:claude-sonnet-4-5', 'openai:gpt-4.1'] as const
+export const DEFAULT_APTITUDE_COMPARISON_MODELS = ['anthropic:claude-sonnet-5-5', 'openai:gpt-6.2-sol'] as const
 export function configuredAptitudeComparisonModels(env: AptitudeEnvironment = process.env): AptitudeModel[] {
   const ids = (env.APTITUDE_COMPARISON_MODELS?.trim() || DEFAULT_APTITUDE_COMPARISON_MODELS.join(',')).split(',').map(value => value.trim()).filter(Boolean)
   if (ids.length < 2 || ids.length > 3 || new Set(ids).size !== ids.length) throw new AptitudeServiceError('APTITUDE_COMPARISON_MODELS must name two or three distinct allowlisted models.', 503, 'MODEL_CONFIGURATION')

@@ -39,9 +39,20 @@ describe('commit-bound model selection guard', () => {
     expect(guard.callsStarted).toBe(36)
     expect(() => guard.attempt(plan.arms[0])(plan.modelIds[0])).toThrow('CALL_CAP_REACHED')
   })
+  it('bounds the two-provider regression to exactly twenty-four calls without a hidden third arm', () => {
+    const plan = planAptitudeSelection({ APTITUDE_SELECTION_MODELS: 'anthropic:claude-sonnet-5-5,openai:gpt-6.2-sol', APTITUDE_SELECTION_MAX_CALLS: '24' })
+    expect(plan).toMatchObject({ strategy: 'single', fixtureCount: 12, repeats: 1, plannedAttempts: 24, plannedCalls: 24, maxCalls: 24 })
+    expect(plan.modelIds).toEqual(['anthropic:claude-sonnet-5-5', 'openai:gpt-6.2-sol'])
+    const guard = new AptitudeEvaluationCallGuard(plan)
+    for (let fixture = 0; fixture < 12; fixture++) for (const arm of plan.arms) guard.attempt(arm)(arm.modelIds[0])
+    expect(guard.callsStarted).toBe(24)
+    expect(() => guard.attempt(plan.arms[0])(plan.modelIds[0])).toThrow('CALL_CAP_REACHED')
+  })
   it.each([
     {}, { APTITUDE_SELECTION_MODELS: selectedModels },
     { APTITUDE_SELECTION_MODELS: selectedModels, APTITUDE_SELECTION_MAX_CALLS: '100' },
+    { APTITUDE_SELECTION_MODELS: selectedModels, APTITUDE_SELECTION_MAX_CALLS: '24' },
+    { APTITUDE_SELECTION_MODELS: 'anthropic:claude-sonnet-5-5,openai:gpt-6.2-sol', APTITUDE_SELECTION_MAX_CALLS: '36' },
     { APTITUDE_SELECTION_MODELS: 'a,b', APTITUDE_SELECTION_MAX_CALLS: '36' },
     { APTITUDE_SELECTION_MODELS: 'a,b,a', APTITUDE_SELECTION_MAX_CALLS: '36' },
     { APTITUDE_SELECTION_MODELS: 'a,b,c,d', APTITUDE_SELECTION_MAX_CALLS: '36' },

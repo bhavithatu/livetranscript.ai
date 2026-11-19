@@ -8,6 +8,7 @@ import { AptitudeServiceError } from '@/lib/aptitude/modelPolicy'
 import { APTITUDE_CONTRACT_HEADER, APTITUDE_CONTRACT_VERSION, MAX_APTITUDE_BODY_BYTES, parseAptitudeResult, type AptitudeResult } from '@/lib/aptitude/schema'
 import { solvedGridObservation, TEST_REQUEST } from '@/lib/aptitude/testFixtures'
 import { comparisonFixture } from '@/components/aptitude/comparisonTestFixtures'
+import { APTITUDE_PROGRESS_CONTENT_TYPE, readAptitudeProgressStream, type AptitudeProgressUpdate } from '@/lib/aptitude/progress'
 
 vi.mock('@/lib/auth', () => ({ currentUserId: vi.fn() }))
 vi.mock('@/lib/aptitude/analyze', () => ({ analyzeAptitude: vi.fn() }))
@@ -37,7 +38,7 @@ describe('aptitude endpoint boundaries', () => {
     const response = await POST(oldRequest)
     expect(response.status).toBe(409)
     expect(response.headers.get('cache-control')).toBe('no-store')
-    expect(await response.json()).toEqual({ error: 'Aptitude has been updated. Refresh this tab once, then retry your capture.', code: 'CLIENT_UPDATE_REQUIRED' })
+    expect(await response.json()).toEqual({ error: 'Aptitude has been updated. Save your existing captures before refreshing this tab, then retry.', code: 'CLIENT_UPDATE_REQUIRED' })
     expect(analyzeAptitude).not.toHaveBeenCalled()
   })
   it('preserves typed source facts in the selected and candidate answers for compatible clients', async () => {
@@ -83,5 +84,65 @@ describe('aptitude endpoint boundaries', () => {
     vi.mocked(analyzeAptitude).mockClear()
     expect((await POST(request({ ...TEST_REQUEST, strategy: 'race' }))).status).toBe(400)
     expect(analyzeAptitude).not.toHaveBeenCalled()
+  })
+
+  it.each(['single', 'compare'] as const)('keeps an existing grid-v1 %s tab usable without mutating the new confidence result', async strategy => {
+    const observation = solvedGridObservation()
+    observation.answer!.confidence = 83
+    const base: AptitudeResult = { ...observation, schemaVersion: 1, captureId: TEST_REQUEST.captureId, questionVersion: 1,
+      questionId: 'a'.repeat(64), sourceHash: 'b'.repeat(64), durationMs: 50, model: 'test-model', provider: 'openai',
+      verification: { method: 'source_review', outcome: 'not_run', notes: ['No independent visual check.'] } }
+    const internal = strategy === 'compare' ? comparisonFixture(base) : base
+    const original = structuredClone(internal)
+    vi.mocked(analyzeAptitude).mockResolvedValue(internal)
+    const response = await POST(request({ ...TEST_REQUEST, strategy }, { [APTITUDE_CONTRACT_HEADER]: 'grid-v1', Accept: APTITUDE_PROGRESS_CONTENT_TYPE }))
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toContain('application/json')
+    const value = await response.json()
+    expect(value.answer).not.toHaveProperty('confidence')
+    expect(value.answer.gridInventory).toEqual(base.answer!.gridInventory)
+    for (const candidate of value.comparison?.candidates ?? []) expect(candidate.observation.answer).not.toHaveProperty('confidence')
+    expect(internal).toEqual(original)
+    expect(analyzeAptitude).toHaveBeenCalledOnce()
+    expect(vi.mocked(analyzeAptitude).mock.calls[0][0].strategy).toBe(strategy)
+  })
+
+  it('delivers validated model completions before the final comparison while preserving JSON opt-out', async () => {
+    const base: AptitudeResult = { ...solvedGridObservation(), schemaVersion: 1, captureId: TEST_REQUEST.captureId, questionVersion: TEST_REQUEST.questionVersion,
+      questionId: 'a'.repeat(64), sourceHash: 'b'.repeat(64), durationMs: 50, model: 'test-model', provider: 'openai',
+      verification: { method: 'source_review', outcome: 'not_run', notes: ['No independent visual check.'] } }
+    const result = comparisonFixture(base)
+    const identity = { captureId: result.captureId, questionVersion: result.questionVersion, sourceHash: result.sourceHash }
+    let resolve!: (value: AptitudeResult) => void
+    let progress!: (event: AptitudeProgressUpdate) => void
+    vi.mocked(analyzeAptitude).mockImplementation((_request, _signal, options) => {
+      progress = options!.onProgress!
+      progress({ type: 'start', ...identity, models: result.comparison!.candidates.map(candidate => ({ modelId: candidate.modelId, provider: candidate.provider, model: candidate.model! })) })
+      return new Promise(done => { resolve = done })
+    })
+    const response = await POST(request({ ...TEST_REQUEST, strategy: 'compare' }, { Accept: APTITUDE_PROGRESS_CONTENT_TYPE }))
+    expect(response.headers.get('content-type')).toContain(APTITUDE_PROGRESS_CONTENT_TYPE)
+    expect(response.headers.get('cache-control')).toBe('no-store')
+    const update = vi.fn()
+    const completion = readAptitudeProgressStream(response.body!, TEST_REQUEST, update, new AbortController().signal)
+    progress({ type: 'candidate', ...identity, candidate: result.comparison!.candidates[0] })
+    await vi.waitFor(() => expect(update).toHaveBeenCalledTimes(2))
+    expect(update.mock.calls[1][0].candidate.provider).toBe('openai')
+    progress({ type: 'candidate', ...identity, candidate: result.comparison!.candidates[1] })
+    resolve(result)
+    expect(await completion).toEqual(result)
+  })
+
+  it('sanitizes streamed errors and aborts provider work when the response reader disconnects', async () => {
+    vi.mocked(analyzeAptitude).mockRejectedValueOnce(new Error('secret-provider-payload'))
+    const response = await POST(request({ ...TEST_REQUEST, strategy: 'compare' }, { Accept: APTITUDE_PROGRESS_CONTENT_TYPE }))
+    const message = await response.text()
+    expect(message).not.toContain('secret-provider-payload')
+    expect(JSON.parse(message)).toMatchObject({ type: 'error', code: 'INTERNAL_ERROR', captureId: TEST_REQUEST.captureId, sourceHash: null })
+    let signal!: AbortSignal
+    vi.mocked(analyzeAptitude).mockImplementation((_request, parent) => { signal = parent!; return new Promise(() => {}) })
+    const pending = await POST(request({ ...TEST_REQUEST, strategy: 'compare' }, { Accept: APTITUDE_PROGRESS_CONTENT_TYPE }))
+    await pending.body!.cancel()
+    expect(signal.aborted).toBe(true)
   })
 })

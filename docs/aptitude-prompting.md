@@ -12,7 +12,12 @@ task contract is to read the source, represent its facts, apply the appropriate
 method, test the proposed result against constraints and counterexamples, and
 cross-check the final option. Its visible response contains a short worked
 solution and observable evidence. It does not request hidden scratch work, a
-transcript of every attempted thought, or a self-assigned confidence percentage.
+transcript of every attempted thought. At the user's request, solved answers now
+also include an optional integer confidence estimate from 0 to 100. The UI labels
+this as an **uncalibrated model estimate**, separately from independent checks.
+Missing or null values display as not rated; no score is derived from arithmetic
+success or model agreement. A high estimate never overrides missing evidence,
+ambiguous rules, or a failed verification check. Earlier saved answers remain readable.
 
 This distinction follows current provider guidance:
 

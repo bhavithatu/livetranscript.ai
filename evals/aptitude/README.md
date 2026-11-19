@@ -1,6 +1,23 @@
 # Aptitude evaluation
 
-This is a runnable **20-image synthetic pilot**, not evidence of a model's real assessment accuracy. No live model results are committed. Offline tests verify the parser, scorer, rendered fixtures and safeguards; passing them does not measure AI accuracy or latency. A clear question and a desktop-sized version of the same question are a paired layout stress case, not independent evidence of accuracy.
+The current user-requested production comparison is Claude Sonnet 5.5 plus
+GPT-6.2 Sol, both with high reasoning effort. The twelve-image selection runner
+also supports this two-model **24-call** regression: explicitly set
+`APTITUDE_SELECTION_MODELS=anthropic:claude-sonnet-5-5,openai:gpt-6.2-sol` and
+`APTITUDE_SELECTION_MAX_CALLS=24`. Three explicitly selected models still
+require 36 calls. The exact-commit Vercel guard and zero-retry budget remain in
+force. These twelve examples were previously used for selection and are no
+longer a fresh holdout; results belong in the regression record.
+
+The comparison UI displays each completed, validated candidate immediately,
+before the combined reconciliation finishes. Model-supplied confidence values
+are uncalibrated self-estimates, never scoring inputs or a way to override a
+failed evidence check. The selection report retains the structured observation
+before local verification as well as the published answer, so abstentions can
+be diagnosed without losing the original response. It includes only authored
+practice fixtures, not user session captures or provider thinking blocks.
+
+The original suite below is a runnable **20-image synthetic pilot**, not evidence of a model's real assessment accuracy. Live results from the separate twelve-image selection pilot are recorded in `docs/aptitude-model-selection.md`. Offline tests verify the parser, scorer, rendered fixtures and safeguards; passing them does not measure AI accuracy or latency. A clear question and a desktop-sized version of the same question are a paired layout stress case, not independent evidence of accuracy.
 
 ## What runs
 

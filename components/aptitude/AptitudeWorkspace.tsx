@@ -2,7 +2,7 @@
 
 import Image from 'next/image'
 import { useCallback, useEffect, useEffectEvent, useId, useRef, useState } from 'react'
-import { Camera, Crop, Monitor, Pause, Play, Square, Upload, ZoomIn } from 'lucide-react'
+import { Camera, Crop, Download, Monitor, Pause, Play, Square, Upload, ZoomIn } from 'lucide-react'
 import { useScreenStream } from '@/lib/vision/useScreenStream'
 import { useAptitudeCapture } from '@/lib/aptitude/useAptitudeCapture'
 import { createAptitudeCapture, type AptitudeCapture, type NormalizedRegion } from '@/lib/aptitude/captureDetector'
@@ -15,16 +15,16 @@ import { CaptureInspector } from './CaptureInspector'
 import styles from './AptitudeWorkspace.module.css'
 
 /** Content only; CopilotWorkspace owns route navigation and WorkspaceShell. */
-export function AptitudeWorkspace() {
+export function AptitudeWorkspace({ archiveOwnerId }: { archiveOwnerId?: string | null } = {}) {
   const screen = useScreenStream({ preferNativeResolution: true })
-  const session = useAptitudeSession()
+  const session = useAptitudeSession({ archiveOwnerId })
   const { sampleFrame: sampleScreenFrame, sampleFingerprint: sampleScreenFingerprint } = screen
   const { analyze } = session
   const [category, setCategory] = useState<AptitudeCategorySelection>('auto')
-  const [strategy, setStrategy] = useState<AptitudeStrategy>('single')
+  const [strategy, setStrategy] = useState<AptitudeStrategy>('compare')
   const [automatic, setAutomaticState] = useState(false)
   const automaticEnabled = useRef(false)
-  const selectedStrategy = useRef<AptitudeStrategy>('single')
+  const selectedStrategy = useRef<AptitudeStrategy>('compare')
   const strategyDescriptionId = useId()
   const setAutomatic = useCallback((enabled: boolean) => {
     automaticEnabled.current = enabled
@@ -287,26 +287,31 @@ export function AptitudeWorkspace() {
     <section className={styles.controls} aria-label="Aptitude capture controls">
       <div className={styles.controlHeading}>
         <div><h2>One question. Clear reasoning.</h2><p>Share the question, include every choice, then analyze. Turn on automatic capture to follow new questions.</p></div>
-        <span className={styles.badge}>{strategy === 'compare' ? 'Compare models' : 'Single model'} · {category === 'auto' ? 'Auto-detect type' : APTITUDE_CATEGORY_LABELS[category]}</span>
+        <span className={styles.badge}>{strategy === 'compare' ? 'Claude + OpenAI' : 'Single model'} · {category === 'auto' ? 'Auto-detect type' : APTITUDE_CATEGORY_LABELS[category]}</span>
       </div>
+      <p id={strategyDescriptionId} className={styles.modeDescription}>{strategy === 'compare'
+        ? 'Claude and OpenAI analyze the same capture in parallel. Each answer appears when ready; this uses both models’ credits.'
+        : 'One model analyzes the capture. Choose comparison in Advanced options for Claude and OpenAI together.'}</p>
       <div className={styles.buttonRow}>
-        {!screen.sharing && <button type="button" className="btn-signal" onClick={() => screen.starting ? stopSharing() : void startSharing()} disabled={readingFile}>
+        {!screen.sharing && <button type="button" className="btn-signal" onClick={() => screen.starting ? stopSharing() : void startSharing()} disabled={readingFile || !session.archiveReady}>
           <Monitor size={16} aria-hidden />{screen.starting ? 'Cancel sharing setup' : 'Share screen'}
         </button>}
         {screen.sharing && <>
-          <button type="button" className={autoOn ? 'btn-ghost' : 'btn-signal'} aria-pressed={autoOn} disabled={readingFile} onClick={() => {
+          <button type="button" className={autoOn ? 'btn-ghost' : 'btn-signal'} aria-pressed={autoOn} disabled={readingFile || !session.archiveReady} onClick={() => {
             if (autoOn) { pause(); return }
             setNotice(null); setInputError(null); watcher.reset(); setAutomatic(true)
           }}>{autoOn ? <Pause size={16} aria-hidden /> : <Play size={16} aria-hidden />}{autoOn ? 'Pause automatic capture' : 'Start automatic capture'}</button>
-          <button type="button" className="btn-ghost" disabled={readingFile} onClick={() => takeCapture(true)}><Camera size={16} aria-hidden />Capture now</button>
-          <button type="button" className="btn-ghost" disabled={readingFile} onClick={selectQuestionArea}><Crop size={16} aria-hidden />Select question area</button>
+          <button type="button" className="btn-ghost" disabled={readingFile || !session.archiveReady} onClick={() => takeCapture(true)}><Camera size={16} aria-hidden />Capture now</button>
+          <button type="button" className="btn-ghost" disabled={readingFile || !session.archiveReady} onClick={selectQuestionArea}><Crop size={16} aria-hidden />Select question area</button>
           <button type="button" className="btn-stop" onClick={stopSharing}><Square size={14} aria-hidden />Stop sharing</button>
         </>}
-        {!screen.sharing && <button type="button" className="btn-ghost" disabled={readingFile} onClick={() => fileInput.current?.click()}><Upload size={16} aria-hidden />Upload screenshot</button>}
-        <input ref={fileInput} className={styles.hiddenInput} type="file" accept="image/png,image/jpeg,image/webp" aria-label="Upload aptitude screenshot" onChange={(event) => void upload(event.target.files?.[0])} />
+        {!screen.sharing && <button type="button" className="btn-ghost" disabled={readingFile || !session.archiveReady} onClick={() => fileInput.current?.click()}><Upload size={16} aria-hidden />Upload screenshot</button>}
+        <input ref={fileInput} className={styles.hiddenInput} type="file" accept="image/png,image/jpeg,image/webp" aria-label="Upload aptitude screenshot" disabled={!session.archiveReady} onChange={(event) => void upload(event.target.files?.[0])} />
         {readingFile && <button type="button" className="btn-ghost" onClick={cancelInput}>Cancel image loading</button>}
       </div>
       <div className={styles.captureStatus} role="status"><span className={`${styles.dot} ${screen.sharing ? styles.dotActive : ''}`} aria-hidden />{screen.starting ? 'Choose a source in the browser sharing dialog.' : readingFile ? 'Opening screenshot…' : watchMessage}{screen.sharing && sourceLabel ? ` · ${sourceLabel}` : ''}</div>
+      {!session.archiveReady && <p className={styles.muted} role="status">Restoring saved questions…</p>}
+      {session.archiveNotice && <p className={styles.archiveNotice} role="status">{session.archiveNotice}</p>}
       {notice && <p className={styles.muted} role="status">{notice}</p>}
       {(screen.error || inputError) && <p className={styles.error} role="alert">{inputError || screen.error}</p>}
       <details ref={advancedOptions} className={styles.settings} id="aptitude-practice">
@@ -320,22 +325,19 @@ export function AptitudeWorkspace() {
           </label>
           <label className={styles.category}>Analysis mode
             <select aria-label="Analysis mode" aria-describedby={strategyDescriptionId} value={strategy} onChange={(event) => changeStrategy(event.target.value as AptitudeStrategy)}>
+              <option value="compare">Claude + OpenAI</option>
               <option value="single">Single model</option>
-              <option value="compare">Compare models</option>
             </select>
           </label>
         </div>
-      <p id={strategyDescriptionId} className={strategy === 'compare' ? styles.comparisonDisclosure : styles.modeDescription}>{strategy === 'compare'
-        ? 'Sends the same screenshot to 2–3 configured models. Requests may go to OpenAI and Anthropic and use additional provider credits. Matching answers do not guarantee correctness.'
-        : 'One answer with its worked explanation and available checks. You can choose Compare models before starting an analysis.'}</p>
       <div className={styles.buttonRow}>
         {screen.sharing && <>
-          <button type="button" className="btn-ghost" disabled={readingFile} onClick={() => void startSharing()}><Monitor size={16} aria-hidden />Change shared screen</button>
-          <button type="button" className="btn-ghost" disabled={readingFile} onClick={() => fileInput.current?.click()}><Upload size={16} aria-hidden />Upload screenshot</button>
+          <button type="button" className="btn-ghost" disabled={readingFile || !session.archiveReady} onClick={() => void startSharing()}><Monitor size={16} aria-hidden />Change shared screen</button>
+          <button type="button" className="btn-ghost" disabled={readingFile || !session.archiveReady} onClick={() => fileInput.current?.click()}><Upload size={16} aria-hidden />Upload screenshot</button>
         </>}
-        <button type="button" className="btn-ghost" onClick={loadPractice}>Try a practice question</button>
+        <button type="button" className="btn-ghost" disabled={!session.archiveReady} onClick={loadPractice}>Try a practice question</button>
       </div>
-      <RegionControls crop={crop} masks={masks} canPreview={screen.sharing && !readingFile} onRefresh={() => takeCapture(false)} onCropChange={(next) => {
+      <RegionControls crop={crop} masks={masks} canPreview={screen.sharing && !readingFile && session.archiveReady} onRefresh={() => takeCapture(false)} onCropChange={(next) => {
         cancelInput(); pause(); setCrop(next); watcher.reset(); setPreview(null)
         setNotice('Question area changed. Refresh the capture preview before analyzing.')
       }} onMasksChange={(next) => {
@@ -357,7 +359,7 @@ export function AptitudeWorkspace() {
               <p className={styles.previewIdentity}>This is the image for {savedCaptureLabel} shown alongside it.</p>
               <button type="button" className="btn-ghost" onClick={() => session.pin(null)}>Return to latest capture</button>
             </> : <>
-              <button type="button" className="btn-signal" disabled={readingFile || !livePreview && session.running?.capture.image === displayedCapture.image && session.running.strategy === strategy} onClick={analyzePreview}>Analyze this capture</button>
+              <button type="button" className="btn-signal" disabled={!session.archiveReady || readingFile || !livePreview && session.running?.capture.image === displayedCapture.image && session.running.strategy === strategy} onClick={analyzePreview}>Analyze this capture</button>
               <p className={styles.muted}>{livePreview ? awaitingCurrentCapture ? 'The question changed. Analyze now captures the current screen immediately.' : 'Analyze takes a fresh image of the shared question area.' : 'This exact image is analyzed. Include the full question and every choice.'}</p>
               {previewSource === 'screen' && <p className={styles.previewTip}>Small diagram? Select question area, then enlarge to check it.</p>}
             </>}
@@ -365,6 +367,7 @@ export function AptitudeWorkspace() {
         </section>
         {(preview || session.entries.length > 0) && <section className={styles.history} aria-label="Question history">
           <div className={styles.sectionHeading}><h2>Questions</h2><span className={styles.badge}>{session.entries.length}</span></div>
+          {session.entries.length > 0 && <button type="button" className={`btn-ghost ${styles.exportButton}`} disabled={!session.archiveReady} onClick={() => void session.exportSession()}><Download size={15} aria-hidden />Export session</button>}
           {session.entries.length ? <>
             <label className={styles.historySelect}>View a question
               <select value={session.pinned ? session.selectedId! : ''} onChange={(event) => session.pin(event.target.value || null)}>
@@ -373,7 +376,8 @@ export function AptitudeWorkspace() {
               </select>
             </label>
             <button type="button" className={styles.textButton} onClick={clear}>Clear captures and history</button>
-            <p className={styles.muted}>Up to {APTITUDE_HISTORY_LIMIT} recent questions stay in this tab. Reloading clears them.</p>
+            <p className={styles.muted}>Up to {APTITUDE_HISTORY_LIMIT} questions in this session. Export saves the screenshots, both model answers, confidence estimates and timings for review.</p>
+            {session.savedAt && <p className={styles.savedStatus}>Saved in this browser tab · <time dateTime={new Date(session.savedAt).toISOString()}>{new Date(session.savedAt).toLocaleTimeString()}</time></p>}
           </> : <>
             <p className={styles.muted}>Your questions and answers will appear here.</p>
             {preview && <button type="button" className={styles.textButton} onClick={clear}>Clear captures and history</button>}
@@ -405,7 +409,7 @@ export function AptitudeWorkspace() {
         </div>}
       </section>
     </div>
-    <p className={styles.privacyNote}>Screen capture starts only when you choose a source. Captured questions are sent to the configured AI service when you analyze them. This mode does not select or submit answers on another website.</p>
+    <p className={styles.privacyNote}>Screen capture starts only when you choose a source. Captured questions are sent to the configured AI services when you analyze them. Session history is saved in this browser tab for up to 7 days; clear it here or export a copy. This mode does not select or submit answers on another website.</p>
     {inspection && <CaptureInspector capture={inspection.capture} title={inspection.title} crop={crop}
       onApply={inspection.selecting ? applyQuestionArea : undefined} onClose={() => setInspection(null)} />}
   </div>

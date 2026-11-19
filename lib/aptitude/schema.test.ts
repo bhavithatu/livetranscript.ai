@@ -1,8 +1,29 @@
 import { describe, expect, it } from 'vitest'
-import { MAX_APTITUDE_IMAGE_CHARS, parseAptitudeObservation, parseAptitudeRequest, parseAptitudeResult } from './schema'
+import { MAX_APTITUDE_IMAGE_CHARS, parseAptitudeComparisonCandidate, parseAptitudeObservation, parseAptitudeRequest, parseAptitudeResult } from './schema'
 import { solvedObservation, TEST_REQUEST } from './testFixtures'
 
 describe('aptitude wire contract', () => {
+  it.each([0, 67, 100, null])('preserves a bounded model self-estimate without inventing a score: %s', confidence => {
+    const item = solvedObservation()
+    item.answer!.confidence = confidence
+    expect(parseAptitudeObservation(item).answer!.confidence).toBe(confidence)
+    expect(parseAptitudeObservation(solvedObservation()).answer).not.toHaveProperty('confidence')
+  })
+  it.each([-1, 101, 0.99, NaN, Infinity, '95', undefined])('rejects an invalid model self-estimate: %s', confidence => {
+    const item = solvedObservation()
+    const answer = { ...item.answer, confidence }
+    expect(() => parseAptitudeObservation({ ...item, answer })).toThrow(/confidence/)
+  })
+  it('does not let high confidence bypass missing evidence or conflicting verification', () => {
+    const item = solvedObservation()
+    item.answer!.confidence = 100
+    item.question!.missingEvidence = ['The required table heading is unreadable.']
+    expect(() => parseAptitudeObservation(item)).toThrow(/complete evidence/)
+    item.question!.missingEvidence = []
+    expect(() => parseAptitudeComparisonCandidate({ modelId: 'openai:gpt-6.2-sol', model: 'gpt-6.2-sol', provider: 'openai',
+      status: 'complete', observation: item, verification: { method: 'arithmetic', outcome: 'disagreed', notes: ['Wrong result.'] },
+      durationMs: 100, error: null })).toThrow(/cannot vote/)
+  })
   it('accepts a complete objective answer and a genuine Cannot say option', () => {
     expect(parseAptitudeObservation(solvedObservation()).status).toBe('solved')
     const item = solvedObservation()

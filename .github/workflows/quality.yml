@@ -114,6 +114,15 @@ jobs:
           trap 'kill "$APTITUDE_SERVER_PID" || true' EXIT
           for i in $(seq 1 40); do curl -fsS http://127.0.0.1:3000/tools >/dev/null && break; sleep 1; done
           pnpm run test:aptitude:browser
+      - name: Verify browser-local session recovery with a development owner
+        # No secrets are supplied to this job. The existing bypass is development-only;
+        # the harness verifies invalid requests fail and intercepts all model requests.
+        run: |
+          PREVIEW_NO_AUTH=1 pnpm dev --hostname 127.0.0.1 --port 3001 > qa-results/aptitude/archive-server.log 2>&1 &
+          APTITUDE_ARCHIVE_SERVER_PID=$!
+          trap 'kill "$APTITUDE_ARCHIVE_SERVER_PID" || true' EXIT
+          for i in $(seq 1 40); do curl -fsS http://127.0.0.1:3001/tools >/dev/null && break; sleep 1; done
+          APTITUDE_QA_URL=http://127.0.0.1:3001 APTITUDE_QA_PREVIEW_OWNER=1 pnpm run test:aptitude:browser
       - uses: actions/upload-artifact@v4
         if: always()
         with:

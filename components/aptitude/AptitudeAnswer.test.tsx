@@ -27,47 +27,60 @@ const actions = { onRetry: vi.fn(), onStop: vi.fn(), onCapture: vi.fn() }
 afterEach(cleanup)
 
 describe('model comparison results', () => {
-  it.each(['agreement', 'majority'] as const)('groups the supported %s answer before inspectable model cards', (decision) => {
-    render(<AptitudeAnswer entry={entry(comparisonFixture(base, decision))} index={0} {...actions} />)
+  it.each(['agreement', 'majority'] as const)('puts both %s answers before the combined decision and keeps checks collapsed', (decision) => {
+    const result = comparisonFixture(base, decision)
+    result.comparison!.candidates[0].observation!.answer!.confidence = 86
+    result.comparison!.candidates[1].observation!.answer!.confidence = 92
+    // The selected response shares the candidate answer by construction.
+    render(<AptitudeAnswer entry={entry(result)} index={0} {...actions} />)
     const region = screen.getByRole('region', { name: 'Model comparison' })
-    expect(within(region).getByRole('heading', { name: decision === 'agreement' ? 'Models agree' : 'Majority agreement' })).toBeTruthy()
-    const suggested = within(region).getByRole('heading', { name: 'B — 25%' })
+    const heading = within(region).getByRole('heading', { name: decision === 'agreement' ? 'Models agree' : 'Majority agreement' })
     const cards = within(region).getAllByRole('article')
     expect(cards).toHaveLength(decision === 'agreement' ? 2 : 3)
-    expect(suggested.compareDocumentPosition(cards[0]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(cards[0].compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     const selected = within(region).getByRole('article', { name: 'anthropic:test-model-b' })
     expect(selected.getAttribute('data-selected')).toBe('true')
-    expect(within(selected).getByText('Answer shown')).toBeTruthy()
+    expect(within(selected).getByRole('heading', { name: 'Claude' })).toBeTruthy()
+    expect(within(selected).getByText('B — 25%', { selector: 'p' })).toBeTruthy()
+    expect(within(selected).getByText('92%')).toBeTruthy()
+    expect(within(selected).getByText('Uncalibrated estimate')).toBeTruthy()
     expect(within(selected).getByText('Response time 2.2 s')).toBeTruthy()
+    expect((selected.querySelector('details') as HTMLDetailsElement).open).toBe(false)
+    fireEvent.click(within(selected).getByText('Explanation & checks'))
     expect(within(selected).getByText(/does not verify image reading, rule choice/)).toBeTruthy()
-    expect(within(region).getByText(/does not prove the answer is correct/)).toBeTruthy()
-    if (decision === 'majority') {
-      const other = within(region).getByRole('article', { name: 'openai:test-model-c' })
-      expect(other.getAttribute('data-selected')).toBe('false')
-      expect(within(other).getByText('A — 20%', { selector: 'p' })).toBeTruthy()
-      fireEvent.click(within(other).getByText('Explanation & evidence'))
-      expect((other.querySelector('details') as HTMLDetailsElement).open).toBe(true)
-      expect(within(other).getByText('Divide by the later value: 18 ÷ 90 × 100 = 20%.')).toBeTruthy()
-    }
+    expect(within(region).getByText(/Agreement does not prove the answer is correct/)).toBeTruthy()
+    expect(screen.queryByText('Suggested answer')).toBeNull()
+    expect(within(region).getByText(/not measured accuracy/)).toBeTruthy()
   })
 
-  it('withholds a recommendation on disagreement while keeping both individual answers and reasoning visible', () => {
-    render(<AptitudeAnswer entry={entry(comparisonFixture(base, 'disagreement'))} index={0} {...actions} />)
+  it('keeps both individual answers and copy controls on disagreement without declaring a winner', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    const result = comparisonFixture(base, 'disagreement')
+    result.comparison!.candidates[1].observation!.answer!.confidence = 99
+    render(<AptitudeAnswer entry={entry(result)} index={0} {...actions} />)
     const region = screen.getByRole('region', { name: 'Model comparison' })
     expect(within(region).getByRole('heading', { name: 'Models disagree' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Model answers ready' })).toBeTruthy()
     expect(screen.queryByText('Suggested answer')).toBeNull()
-    expect(within(region).getByText(/No answer is selected/)).toBeTruthy()
+    expect(within(region).getByText(/No combined answer is selected/)).toBeTruthy()
     const first = within(region).getByRole('article', { name: 'openai:test-model-a' })
     const second = within(region).getByRole('article', { name: 'anthropic:test-model-b' })
     expect(within(first).getByText('B — 25%', { selector: 'p' })).toBeTruthy()
+    expect(within(first).getByText('Not rated')).toBeTruthy()
     expect(within(second).getByText('A — 20%', { selector: 'p' })).toBeTruthy()
+    expect(within(second).getByText('99%')).toBeTruthy()
     expect((first.querySelector('details') as HTMLDetailsElement).open).toBe(false)
-    expect((second.querySelector('details') as HTMLDetailsElement).open).toBe(false)
-    expect(screen.queryByRole('button', { name: 'Copy answer' })).toBeNull()
     expect(region.querySelector('[data-selected="true"]')).toBeNull()
+    fireEvent.click(within(second).getByRole('button', { name: 'Copy Claude answer' }))
+    await within(second).findByRole('button', { name: 'Claude answer copied' })
+    expect(writeText).toHaveBeenLastCalledWith('A — 20%')
+    fireEvent.click(within(first).getByRole('button', { name: 'Copy OpenAI answer' }))
+    await within(first).findByRole('button', { name: 'OpenAI answer copied' })
+    expect(writeText).toHaveBeenLastCalledWith('B — 25%')
   })
 
-  it('shows partial results and actual timeout errors without treating one usable model as agreement', () => {
+  it('shows partial results and timeout errors without confidence on a missing answer', () => {
     const result = comparisonFixture(base, 'insufficient')
     const view = render(<AptitudeAnswer entry={entry(result)} index={0} retryStrategy="single" {...actions} />)
     const region = screen.getByRole('region', { name: 'Model comparison' })
@@ -78,6 +91,8 @@ describe('model comparison results', () => {
     expect(within(timedOut).getByText('Timed out')).toBeTruthy()
     expect(within(timedOut).getByText('Response time 25.0 s')).toBeTruthy()
     expect(within(timedOut).getByText('The model did not finish before the deadline.')).toBeTruthy()
+    expect(within(timedOut).queryByText('Model confidence')).toBeNull()
+    expect(within(timedOut).queryByRole('button')).toBeNull()
     expect(screen.getByText('This retry uses Single model.')).toBeTruthy()
     const allFailed: AptitudeResult = { ...result, status: 'error', message: 'No models completed.', comparison: {
       ...result.comparison!, agreementCount: 0, candidates: result.comparison!.candidates.map((candidate, index) => index === 0
@@ -91,7 +106,7 @@ describe('model comparison results', () => {
     expect(screen.getByRole('button', { name: 'Retry this capture' })).toBeTruthy()
   })
 
-  it('distinguishes matching values from reconciled evidence without publishing a recommendation', () => {
+  it('distinguishes matching values from reconciled evidence below the answers', () => {
     const result = comparisonFixture(base)
     const candidates = result.comparison!.candidates
     candidates[1].observation!.question!.stem = 'A different reading of the question.'
@@ -104,6 +119,69 @@ describe('model comparison results', () => {
     expect(screen.queryByRole('heading', { name: 'Models disagree' })).toBeNull()
     expect(screen.queryByText('Suggested answer')).toBeNull()
     expect(screen.getByText(/The answer values match, but/)).toBeTruthy()
+  })
+
+  it('shows the first validated answer and confidence while the other provider is still pending', () => {
+    const comparison = comparisonFixture(base).comparison!
+    const first = comparison.candidates[0]
+    first.observation!.answer!.confidence = 0
+    const active: AptitudeSessionEntry = { ...entry(base), result: null, status: 'analyzing', elapsedMs: null, finishedAt: null,
+      progress: { sourceHash: base.sourceHash, models: comparison.candidates.map(candidate => ({ modelId: candidate.modelId, model: candidate.model!, provider: candidate.provider })), candidates: [first], firstAnswerMs: 1500 } }
+    const view = render(<AptitudeAnswer entry={active} index={0} {...actions} />)
+    expect(screen.getByRole('heading', { name: '1 of 2 responses ready' })).toBeTruthy()
+    expect(screen.getByText('First answer 1.5 s')).toBeTruthy()
+    expect(screen.getByText('B — 25%', { selector: 'p' })).toBeTruthy()
+    expect(screen.getByText('0%')).toBeTruthy()
+    const waiting = screen.getByRole('article', { name: 'anthropic:test-model-b' })
+    expect(waiting.getAttribute('aria-busy')).toBe('true')
+    expect(within(waiting).getByText('Waiting for this model…')).toBeTruthy()
+    expect(within(waiting).queryByText('Model confidence')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Copy OpenAI answer' })).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'Models agree' })).toBeNull()
+    view.rerender(<AptitudeAnswer entry={{ ...active, status: 'cancelled', elapsedMs: 2000 }} index={0} {...actions} />)
+    expect(screen.getByText('B — 25%', { selector: 'p' })).toBeTruthy()
+    expect(screen.queryByText('Waiting for this model…')).toBeNull()
+    expect(screen.getByText('No completed response')).toBeTruthy()
+    expect(screen.getByText(/Comparison did not finish/)).toBeTruthy()
+  })
+
+  it('preserves the first answer copy button and focus when the second result completes', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    const result = comparisonFixture(base)
+    const candidates = result.comparison!.candidates
+    const active: AptitudeSessionEntry = { ...entry(base), result: null, status: 'analyzing', elapsedMs: null, finishedAt: null,
+      progress: { sourceHash: base.sourceHash, models: candidates.map(candidate => ({ modelId: candidate.modelId, model: candidate.model!, provider: candidate.provider })), candidates: [candidates[0]], firstAnswerMs: 1500 } }
+    const view = render(<AptitudeAnswer entry={active} index={0} {...actions} />)
+    const button = screen.getByRole('button', { name: 'Copy OpenAI answer' })
+    button.focus()
+    fireEvent.click(button)
+    await screen.findByRole('button', { name: 'OpenAI answer copied' })
+    view.rerender(<AptitudeAnswer entry={{ ...active, status: 'complete', result, elapsedMs: 2500, finishedAt: 2500 }} index={0} {...actions} />)
+    expect(screen.getByRole('button', { name: 'OpenAI answer copied' })).toBe(button)
+    expect(document.activeElement).toBe(button)
+    expect(screen.getByRole('button', { name: 'Copy Claude answer' })).toBeTruthy()
+  })
+
+  it.each(['needs_capture', 'ambiguous', 'unsupported'] as const)('does not show confidence or copying when a model returns %s', (status) => {
+    const result = comparisonFixture(base)
+    const candidates = result.comparison!.candidates
+    const response = { ...candidates[0], observation: { ...candidates[0].observation!, status, answer: null, message: 'Review the captured content.' } }
+    const active: AptitudeSessionEntry = { ...entry(base), result: null, status: 'analyzing', elapsedMs: null, finishedAt: null,
+      progress: { sourceHash: base.sourceHash, models: candidates.map(candidate => ({ modelId: candidate.modelId, model: candidate.model!, provider: candidate.provider })), candidates: [response], firstAnswerMs: null } }
+    render(<AptitudeAnswer entry={active} index={0} {...actions} />)
+    const card = screen.getByRole('article', { name: candidates[0].modelId })
+    expect(within(card).getByText('No answer supplied')).toBeTruthy()
+    expect(within(card).queryByText('Model confidence')).toBeNull()
+    expect(within(card).queryByRole('button')).toBeNull()
+  })
+
+  it('shows both provider placeholders before the stream identifies the configured models', () => {
+    render(<AptitudeAnswer entry={{ ...entry(base), result: null, status: 'analyzing' }} index={0} {...actions} />)
+    expect(screen.getByRole('heading', { name: 'Claude' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'OpenAI' })).toBeTruthy()
+    expect(screen.getAllByText('Waiting for this model…')).toHaveLength(2)
+    expect(screen.queryByText('Model confidence')).toBeNull()
   })
 
   it('does not duplicate an unlabeled numeric choice or call arithmetic a correctness check', () => {

@@ -2,10 +2,10 @@
 
 import Image from 'next/image'
 import { useEffect, useState } from 'react'
-import { Check, Copy } from 'lucide-react'
 import type { AptitudeSessionEntry } from '@/lib/aptitude/useAptitudeSession'
 import { APTITUDE_CATEGORY_LABELS, type AptitudeResult, type AptitudeStrategy } from '@/lib/aptitude/schema'
 import { AptitudeComparison } from './AptitudeComparison'
+import { AnswerConfidence, CopyAnswer } from './AnswerActions'
 import { formatAptitudeOption } from './formatOption'
 import styles from './AptitudeWorkspace.module.css'
 
@@ -29,37 +29,11 @@ export function aptitudeStrategyLabel(strategy: AptitudeStrategy) {
 }
 
 export function aptitudeEntryStatus(entry: AptitudeSessionEntry) {
-  if (entry.status === 'analyzing') return entry.strategy === 'compare' ? 'Comparing models' : 'Analyzing'
+  if (entry.status === 'analyzing') return entry.strategy === 'compare' ? entry.progress?.candidates.length ? `${entry.progress.candidates.length} of ${entry.progress.models.length} responses ready` : 'Comparing models' : 'Analyzing'
   if (entry.status === 'cancelled') return 'Stopped'
   if (entry.status === 'error') return 'Could not finish'
+  if (entry.result?.comparison?.candidates.some(candidate => candidate.observation?.status === 'solved')) return 'Model answers ready'
   return { solved: 'Answer ready', needs_capture: 'Needs another capture', ambiguous: 'Uncertain', unsupported: 'Unsupported question', error: 'Could not finish' }[entry.result?.status ?? 'error']
-}
-
-function CopyAnswer({ text }: { text: string }) {
-  const [state, setState] = useState<'idle' | 'copying' | 'copied' | 'manual'>('idle')
-  const copy = async () => {
-    setState('copying')
-    try {
-      await navigator.clipboard.writeText(text)
-      setState('copied')
-    } catch {
-      setState('manual')
-    }
-  }
-  return <div className={styles.answerActions}>
-    <button type="button" className="btn-signal" onClick={() => void copy()} disabled={state === 'copying'}>
-      {state === 'copied' ? <Check size={16} aria-hidden /> : <Copy size={16} aria-hidden />}
-      {state === 'copying' ? 'Copying…' : state === 'copied' ? 'Answer copied' : 'Copy answer'}
-    </button>
-    <p className={styles.muted} role={state === 'copied' || state === 'manual' ? 'status' : undefined}>
-      {state === 'manual' ? 'Clipboard access is unavailable. Copy the selected answer below.'
-        : state === 'copied' ? 'Copied. Choose or paste it on the question page.'
-          : 'Choose the answer on the question page. Screen sharing cannot click it for you.'}
-    </p>
-    {state === 'manual' && <label className={styles.copyFallback}>Answer to copy
-      <textarea autoFocus readOnly value={text} rows={2} onFocus={(event) => event.currentTarget.select()} />
-    </label>}
-  </div>
 }
 
 function SuggestedAnswer({ result }: { result: AptitudeResult }) {
@@ -73,6 +47,7 @@ function SuggestedAnswer({ result }: { result: AptitudeResult }) {
       <p className={styles.eyebrow}>Suggested answer</p>
       <h3>{answerText}</h3>
       <p>{answer.summary}</p>
+      <AnswerConfidence confidence={answer.confidence} />
       <CopyAnswer text={answerText} />
     </div>
     <section className={styles.explanation} aria-label="Worked explanation">
@@ -104,20 +79,24 @@ export function AptitudeAnswer({ entry, index, retryStrategy, onRetry, onStop, o
         <p className={styles.eyebrow}>{aptitudeEntryLabel(entry, index)}{result ? ` · ${APTITUDE_CATEGORY_LABELS[result.category]}` : ''}</p>
         <h2>{aptitudeEntryStatus(entry)}</h2>
       </div>
-      <Elapsed key={`${entry.id}-${entry.questionVersion}`} entry={entry} />
+      <div className={styles.timingSummary}>
+        <Elapsed key={`${entry.id}-${entry.questionVersion}`} entry={entry} />
+        {entry.progress?.firstAnswerMs != null && <span>First answer {(entry.progress.firstAnswerMs / 1000).toFixed(1)} s</span>}
+      </div>
     </header>
     <p className={styles.muted}>Captured <time dateTime={new Date(entry.capture.capturedAt).toISOString()}>{new Date(entry.capture.capturedAt).toLocaleTimeString()}</time> · Attempt {entry.questionVersion} · {aptitudeStrategyLabel(entry.strategy)}</p>
 
-    {entry.status === 'analyzing' && <div className={styles.pending}>
-      <p role="status">{entry.strategy === 'compare' ? 'Comparing model answers for this capture…' : 'Reading this capture and checking the answer…'}</p>
-      <p className={styles.muted}>A new detected question can replace this request. Each result stays with its own capture.</p>
+    {comparison || entry.strategy === 'compare' && (entry.status === 'analyzing' || entry.progress?.candidates.length)
+      ? <AptitudeComparison key={`${entry.id}-${entry.questionVersion}`} comparison={comparison} progress={entry.progress} active={entry.status === 'analyzing'} />
+      : suggestedAnswer}
+    {entry.status === 'analyzing' && <div className={entry.strategy === 'compare' ? styles.pendingCompact : styles.pending}>
+      <p role="status">{entry.strategy === 'compare' ? 'Each model answer appears as soon as it is ready.' : 'Reading this capture and checking the answer…'}</p>
       <button type="button" className="btn-stop" onClick={onStop}>Stop analysis</button>
     </div>}
     {entry.status === 'cancelled' && <div className={styles.notice}><p>This analysis was stopped. The capture is available to retry.</p></div>}
     {entry.error && <div className={styles.error} role="alert">{entry.error}</div>}
-    {result?.message && result.status !== 'error' && <div className={styles.notice}><p>{result.message}</p></div>}
+    {result?.message && result.status !== 'error' && !comparison && <div className={styles.notice}><p>{result.message}</p></div>}
 
-    {comparison ? <AptitudeComparison comparison={comparison}>{suggestedAnswer}</AptitudeComparison> : suggestedAnswer}
 
     {question?.missingEvidence.length ? <section className={styles.notice} aria-label="Missing question content"><h3>Include in your next capture</h3><ul>{question.missingEvidence.map((item, i) => <li key={i}>{item}</li>)}</ul></section> : null}
     {(result?.status === 'needs_capture' || comparison?.candidates.some((candidate) => candidate.observation?.status === 'needs_capture')) && <button type="button" className="btn-signal" onClick={onCapture}>Capture a complete view</button>}

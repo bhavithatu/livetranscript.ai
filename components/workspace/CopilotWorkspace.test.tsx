@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/lib/copilot/useCopilotCapture', () => ({ useCopilotCapture: () => mocks.capture }))
 vi.mock('@/components/nav/Wordmark', () => ({ Wordmark: () => <span>LiveTranscript</span> }))
 vi.mock('@/components/ui/ThemeToggle', () => ({ ThemeToggle: () => <span>Theme</span> }))
-vi.mock('@/components/aptitude/AptitudeWorkspace', () => ({ AptitudeWorkspace: () => <section aria-label="Aptitude question workflow">Capture and analyze a question</section> }))
+vi.mock('@/components/aptitude/AptitudeWorkspace', () => ({ AptitudeWorkspace: ({ archiveOwnerId }: { archiveOwnerId?: string | null }) => <section aria-label="Aptitude question workflow" data-owner={archiveOwnerId ?? 'none'}>Capture and analyze a question<input aria-label="Question workspace draft" defaultValue="" /></section> }))
 vi.mock('@/components/copilot/CopilotPanel', () => ({
   CopilotPanel: ({ getTranscript, variant, onModeChange }: { getTranscript: () => string; variant: string; onModeChange: (mode: 'general' | 'repoInterview' | 'aptitude') => void }) => <div aria-label="AI panel" data-variant={variant}>{getTranscript()}<button type="button" onClick={() => onModeChange('general')}>General focus</button><button type="button" onClick={() => onModeChange('repoInterview')}>Repository focus</button><button type="button" onClick={() => onModeChange('aptitude')}>Aptitude focus</button></div>,
 }))
@@ -55,6 +55,17 @@ describe('standalone AI workspace', () => {
     expect(screen.getByLabelText('AI panel')).toBeTruthy()
     expect(window.location.search).toBe('')
     expect(mocks.capture.start).not.toHaveBeenCalled()
+  })
+
+  it('passes the authenticated archive owner and resets question UI when that owner changes', async () => {
+    const { rerender } = render(<CopilotWorkspace initialMode="aptitude" archiveOwnerId="user_a" />)
+    expect((await screen.findByRole('region', { name: 'Aptitude question workflow' })).getAttribute('data-owner')).toBe('user_a')
+    fireEvent.change(screen.getByRole('textbox', { name: 'Question workspace draft' }), { target: { value: 'Owner A capture state' } })
+    rerender(<CopilotWorkspace initialMode="aptitude" archiveOwnerId="user_b" />)
+    expect(screen.getByRole('region', { name: 'Aptitude question workflow' }).getAttribute('data-owner')).toBe('user_b')
+    expect((screen.getByRole('textbox', { name: 'Question workspace draft' }) as HTMLInputElement).value).toBe('')
+    rerender(<CopilotWorkspace initialMode="aptitude" archiveOwnerId={null} />)
+    expect(screen.getByRole('region', { name: 'Aptitude question workflow' }).getAttribute('data-owner')).toBe('none')
   })
   it('opens a working AI surface without starting audio or requiring a meeting', () => {
     render(<CopilotWorkspace />)

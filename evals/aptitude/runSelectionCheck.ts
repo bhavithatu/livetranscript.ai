@@ -4,7 +4,7 @@ import { expect, it } from 'vitest'
 import { analyzeAptitude, defaultAptitudeTransport } from '@/lib/aptitude/analyze'
 import { configuredAptitudeModels } from '@/lib/aptitude/modelPolicy'
 import { APTITUDE_SYSTEM_PROMPT } from '@/lib/aptitude/prompt'
-import { APTITUDE_OBSERVATION_JSON_SCHEMA, type AptitudeResult } from '@/lib/aptitude/schema'
+import { APTITUDE_OBSERVATION_JSON_SCHEMA, parseAptitudeObservation, type AptitudeObservation, type AptitudeResult, type AptitudeVerification } from '@/lib/aptitude/schema'
 import { AptitudeEvaluationCallGuard } from './evaluationPlan'
 import { aggregateAptitudeAttempts, type ScoredEvaluationAttempt } from './evaluationReport'
 import { inspectAptitudeReleaseReply, safeAptitudeProviderError, type AptitudeReleaseReplyDiagnostic } from './releaseGate'
@@ -26,8 +26,11 @@ type Attempt = ScoredEvaluationAttempt & {
   callStarted: boolean; validated: boolean; diagnostic: AptitudeReleaseReplyDiagnostic | null;
   error: SafeError | null; sourceImageMatches: boolean | null;
   gridInventoryCorrect: boolean | null; evidenceReviewRequired: boolean;
+  /** Original authored fixtures only: preserve the structured answer before local checks. */
+  providerObservation: AptitudeObservation | null;
+  verification: AptitudeVerification | null; message: string | null;
   answer: { status: string; labels: string[]; value: string | null; summary: string | null;
-    evidence: string[]; workedExplanation: string[] } | null;
+    confidence: number | null; evidence: string[]; workedExplanation: string[] } | null;
 }
 
 it.skipIf(aptitudeSelectionEnvironment(process.env) === null)('collects the frozen selection suite without hiding incorrect answers or adding calls', async () => {
@@ -45,7 +48,7 @@ it.skipIf(aptitudeSelectionEnvironment(process.env) === null)('collects the froz
     attempts: [] as Attempt[], aggregates: [] as unknown[], failure: null as SafeError | null,
     automaticModelPromotion: false, comparisonSelectionEvaluated: false,
     limitations: [
-      'Twelve fresh original scenarios: ten objective questions and two boundaries. Small model-selection pilot, not a general accuracy estimate.',
+      'Twelve original regression scenarios: ten objective questions and two boundaries. Previously used for model selection; not a fresh holdout or a general accuracy estimate.',
       'Frozen before the first model run. Once used to select models or tune prompts, these examples are no longer an untouched validation set.',
       'All models receive the same screenshot and generic prompt. Answer keys, fixture IDs and expected categories never enter provider requests.',
       'Wrong answers and unnecessary abstentions are scored without stopping collection; provider/schema/plumbing failures fail the build after collection.',
@@ -64,7 +67,7 @@ it.skipIf(aptitudeSelectionEnvironment(process.env) === null)('collects the froz
   try {
     if (environment === null) throw new Error('Commit-bound deployment selection is required')
     const plan = planAptitudeSelection(process.env)
-    report.configuredModels = plan.modelIds; report.plannedCalls = plan.plannedCalls
+    report.configuredModels = plan.modelIds; report.plannedCalls = plan.plannedCalls; report.maxCalls = plan.maxCalls
     // Validate every selected provider configuration before beginning any paid work.
     for (const id of plan.modelIds) configuredAptitudeModels({ ...process.env, APTITUDE_MODEL: id, APTITUDE_FALLBACK_MODELS: '' })
     const rendered = await Promise.all(APTITUDE_SELECTION_FIXTURES.map(async fixture => ({ fixture, ...await renderSelectionFixture(fixture) })))
@@ -72,7 +75,7 @@ it.skipIf(aptitudeSelectionEnvironment(process.env) === null)('collects the froz
     report.phase = 'analysis'; save()
     for (const [index, { fixture, png, sha256 }] of rendered.entries()) {
       controller.signal.throwIfAborted()
-      // At most three requests run together. All three see identical bytes; each has its own bounded production call.
+      // At most three requests run together. All see identical bytes; each has its own bounded production call.
       await Promise.all(plan.arms.map(async arm => {
         const attempt: Attempt = {
           fixtureId: fixture.id, domain: fixture.domain, modelId: arm.modelIds[0], expectedStatus: fixture.expected.status,
@@ -80,7 +83,7 @@ it.skipIf(aptitudeSelectionEnvironment(process.env) === null)('collects the froz
           inputTokens: null, outputTokens: null, providerDurationMs: null, durationMs: null,
           outcome: 'running', callStarted: false, validated: false, diagnostic: null, error: null,
           sourceImageMatches: null, score: null, comparisonScore: null, gridInventoryCorrect: null,
-          evidenceReviewRequired: false, answer: null,
+          evidenceReviewRequired: false, answer: null, providerObservation: null, verification: null, message: null,
         }
         report.attempts.push(attempt); save()
         const started = performance.now(), reserve = budget.attempt(arm)
@@ -100,6 +103,9 @@ it.skipIf(aptitudeSelectionEnvironment(process.env) === null)('collects the froz
                 attempt.returnedModel = /^[A-Za-z0-9._:/-]{1,200}$/.test(reply.model) ? reply.model : 'INVALID_MODEL_ID'
                 attempt.inputTokens = count(reply.inputTokens); attempt.outputTokens = count(reply.outputTokens)
                 attempt.diagnostic = inspectAptitudeReleaseReply(reply.text)
+                // This runner only sends our original practice fixtures. Retain schema-validated
+                // visible answers, never provider thinking blocks, credentials or user captures.
+                try { attempt.providerObservation = parseAptitudeObservation(JSON.parse(reply.text)) } catch { /* Diagnostic records the invalid schema. */ }
                 return reply
               } catch (error) {
                 attempt.error = safeAptitudeProviderError(error, input.signal.aborted)
@@ -112,10 +118,12 @@ it.skipIf(aptitudeSelectionEnvironment(process.env) === null)('collects the froz
           const score = scoreSelectionFixture(fixture, result)
           attempt.score = score; attempt.gridInventoryCorrect = score.gridInventoryCorrect
           attempt.evidenceReviewRequired = score.evidenceReviewRequired
+          attempt.verification = result.verification; attempt.message = result.message
           attempt.answer = {
             status: result.status,
             labels: (result.answer?.selectedOptionIds ?? []).map(id => result.question?.options.find(option => option.id === id)?.label ?? ''),
             value: result.answer?.value?.slice(0, 100) ?? null, summary: result.answer?.summary.slice(0, 400) ?? null,
+            confidence: result.answer?.confidence ?? null,
             evidence: result.answer?.evidence.map(value => value.slice(0, 2_000)) ?? [],
             workedExplanation: result.answer?.workedExplanation.map(value => value.slice(0, 2_000)) ?? [],
           }
@@ -132,7 +140,8 @@ it.skipIf(aptitudeSelectionEnvironment(process.env) === null)('collects the froz
             outcome: attempt.outcome, durationMs: attempt.durationMs, providerDurationMs: attempt.providerDurationMs,
             inputTokens: attempt.inputTokens, outputTokens: attempt.outputTokens, validated: attempt.validated,
             diagnostic: attempt.diagnostic, error: attempt.error, sourceImageMatches: attempt.sourceImageMatches,
-            answer: attempt.answer && { status: attempt.answer.status, labels: attempt.answer.labels, value: attempt.answer.value, summary: attempt.answer.summary },
+            answer: attempt.answer && { status: attempt.answer.status, labels: attempt.answer.labels, value: attempt.answer.value, summary: attempt.answer.summary, confidence: attempt.answer.confidence },
+            providerObservation: attempt.providerObservation, verification: attempt.verification, message: attempt.message,
           })
           log('score', context, { score: attempt.score, gridInventoryCorrect: attempt.gridInventoryCorrect, evidenceReviewRequired: attempt.evidenceReviewRequired })
           attempt.answer?.evidence.forEach((text, item) => log('evidence', { ...context, item: item + 1 }, { text }))

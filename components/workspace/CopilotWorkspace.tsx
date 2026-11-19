@@ -16,7 +16,7 @@ const AptitudeWorkspace = dynamic(() => import('@/components/aptitude/AptitudeWo
   loading: () => <p role="status" className="p-6 text-sm text-[color:var(--muted)]">Loading question tools…</p>,
 })
 
-export function CopilotWorkspace({ initialMode = 'general' }: { initialMode?: CopilotMode }) {
+export function CopilotWorkspace({ initialMode = 'general', archiveOwnerId }: { initialMode?: CopilotMode; archiveOwnerId?: string | null }) {
   const capture = useCopilotCapture()
   const stopAudio = capture.stop
   const [activeMode, setActiveMode] = useState<CopilotMode>(initialMode)
@@ -124,7 +124,7 @@ export function CopilotWorkspace({ initialMode = 'general' }: { initialMode?: Co
             <summary className="min-h-11 cursor-pointer px-4 py-3 text-xs font-medium text-[color:var(--muted)]">Other AI modes</summary>
             <WorkspaceModeNavigation mode="aptitude" onChange={modeChanged} horizontal />
           </details>
-          <AptitudeWorkspace />
+          <AptitudeWorkspace key={archiveOwnerId ?? 'memory-only'} archiveOwnerId={archiveOwnerId} />
         </> : <WorkspacePanel initialMode={activeMode} onModeChange={modeChanged} variant="workspace" getTranscript={capture.getTranscript} />}
       </div>
     </main>

@@ -1,5 +1,32 @@
 # OpenAI API Migration Decision Ledger
 
+## Current follow-up: Claude/OpenAI answers and session review
+
+The initial model-selection deployment completed at commit
+`018d6c78770bf50279f7abc6efc7ecccbe253355`. The user subsequently requested one
+Claude and one OpenAI answer, both visible at the top with confidence and less
+waiting. This supersedes the initial Astra/Sol production selection below:
+comparison now defaults to Sonnet 5.5 high plus GPT-6.2 Sol high, with Sol as the
+single-provider default when OpenAI is configured. Existing credentials and
+provider retention settings remain unchanged.
+
+An opt-in bounded NDJSON application stream publishes each fully validated
+candidate independently. It does not stream private reasoning or incomplete
+provider output. Capture, attempt and image identities fence stale results;
+legacy grid-v1 clients receive compatible JSON without the new confidence
+field. Confidence is a model self-estimate, not an empirical correctness score.
+
+Local session recovery/export is being verified separately from provider
+accuracy. The user's forty-question Safari session is unavailable to this
+connection, and no server screenshot/answer archive exists for that old run.
+Its accuracy cannot be inferred from the synthetic pilot. The new two-model
+regression is explicitly capped at 24 calls on the existing authored fixtures;
+the independent existing release gate remains eight calls. This current
+follow-up's exact-commit deployment evidence is pending, not implied by the
+historical records below.
+
+## Initial migration record
+
 **Application:** LiveTranscript Aptitude
 **Current integration:** Direct OpenAI Chat Completions and Anthropic Messages, one high-detail screenshot per request, strict JSON plus runtime validation.
 **Selected integration and model:** Retain direct SDK routes; add GPT6.2 Astra and GPT6.2 Sol high-effort profiles, evaluate against current Claude Sonnet5.5.

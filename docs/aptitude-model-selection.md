@@ -1,5 +1,26 @@
 # Aptitude model selection and benchmark evidence
 
+## Current requested comparison — 2026-11-18 follow-up
+
+The user explicitly requested one Claude and one OpenAI model after trying the
+two-OpenAI configuration. The new default comparison is
+`anthropic:claude-sonnet-5-5` plus `openai:gpt-6.2-sol`, both at high reasoning
+effort. Single-model mode uses Sol when OpenAI is configured, or Sonnet when
+only Anthropic is configured. Explicit server overrides still take precedence.
+
+Both calls start concurrently, and each fully validated response can now reach
+the client before its peer finishes. Each model has its own answer, response
+time and uncalibrated confidence estimate. No combined confidence percentage
+is invented, and source reconciliation remains separate from displaying an
+individual answer. A disagreement does not hide either completed response.
+
+The existing twelve original selection examples can be run as a bounded
+**24-call regression** for this two-model pair. They are no longer an untouched
+holdout. The runner now retains each schema-validated provider answer before
+local verification, allowing a model error to be distinguished from a local
+check that suppresses an answer. It never records provider thinking blocks or
+the user's Safari questions. The historical pilot below is unchanged.
+
 Review date: **November 18, 2026**.
 
 This record separates published benchmark evidence from this application's

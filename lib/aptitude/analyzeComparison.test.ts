@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { analyzeAptitude, type AptitudeProviderReply, type AptitudeTransport } from './analyze'
 import { configuredAptitudeComparisonModels } from './modelPolicy'
 import { solvedObservation, TEST_IMAGE, TEST_REQUEST } from './testFixtures'
+import type { AptitudeProgressUpdate } from './progress'
 
 const env = { ANTHROPIC_API_KEY: 'test-only-placeholder', OPENAI_API_KEY: 'test-only-placeholder' }
 const request = { ...TEST_REQUEST, strategy: 'compare' as const }
@@ -20,6 +21,34 @@ describe('bounded comparison orchestration', () => {
     expect(result).toMatchObject({ status: 'solved', model: 'claude-sonnet-returned', comparison: { decision: 'agreement', agreementCount: 2 } })
     expect(onAttempt).toHaveBeenCalledTimes(2)
     expect(onAttempt.mock.calls.every(([attempt]) => attempt.completed && attempt.inputTokens === 10 && attempt.outputTokens === 20)).toBe(true)
+  })
+  it('publishes only verified complete candidates before the slower provider finishes', async () => {
+    const pending: ((value: AptitudeProviderReply) => void)[] = []
+    const transport = vi.fn<AptitudeTransport>().mockImplementation(() => new Promise(resolve => pending.push(resolve)))
+    const progress: AptitudeProgressUpdate[] = []
+    let finished = false
+    const analysis = analyzeAptitude(request, undefined, { env, transport, onProgress: event => progress.push(event) }).then(result => { finished = true; return result })
+    expect(progress[0]).toMatchObject({ type: 'start', captureId: request.captureId, questionVersion: request.questionVersion })
+    expect(transport).toHaveBeenCalledTimes(2)
+    pending[1](reply('openai-fast'))
+    await vi.waitFor(() => expect(progress).toHaveLength(2))
+    expect(progress[1]).toMatchObject({ type: 'candidate', sourceHash: progress[0].sourceHash, candidate: { provider: 'openai', status: 'complete', observation: { status: 'solved' } } })
+    expect(finished).toBe(false)
+    pending[0]({ model: 'claude-invalid', text: '{"answer":"guess"}' })
+    const result = await analysis
+    expect(progress[2]).toMatchObject({ type: 'candidate', candidate: { provider: 'anthropic', status: 'failed', observation: null } })
+    expect(result.comparison?.candidates[1].observation?.answer).toBeTruthy()
+  })
+  it('stops progress publication when the capture is cancelled, even if providers resolve late', async () => {
+    const controller = new AbortController(), progress = vi.fn()
+    const pending: ((value: AptitudeProviderReply) => void)[] = []
+    const transport = vi.fn<AptitudeTransport>().mockImplementation(() => new Promise(resolve => pending.push(resolve)))
+    const analysis = analyzeAptitude(request, controller.signal, { env, transport, onProgress: progress })
+    expect(progress).toHaveBeenCalledOnce()
+    controller.abort()
+    pending.forEach(resolve => resolve(reply('late-model')))
+    await expect(analysis).rejects.toMatchObject({ code: 'ANALYSIS_CANCELLED' })
+    expect(progress).toHaveBeenCalledOnce()
   })
   it('keeps old clients and explicit single requests on one call even when comparison models are configured', async () => {
     const transport = vi.fn<AptitudeTransport>().mockResolvedValue(reply('claude-single'))

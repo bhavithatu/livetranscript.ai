@@ -18,7 +18,7 @@ if (!enabled) {
   if (child.error || child.status !== 0) process.exit(1)
 }
 if (selectionEnvironment) {
-  console.log(`[readiness] Running the commit-bound Aptitude model-selection pilot for ${selectionEnvironment}: twelve original scenarios, three explicit models, exactly thirty-six planned calls. No model is automatically promoted.`)
+  console.log(`[readiness] Running the commit-bound Aptitude model check for ${selectionEnvironment}: twelve original scenarios, two or three explicit models, with an exact declared 24- or 36-call cap. No model is automatically promoted.`)
   const child = spawnSync(process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm', ['exec', 'vitest', 'run', '--config', 'evals/aptitude/selection.config.ts'], { stdio: 'inherit', env: process.env, timeout: 350_000 })
   if (child.error || child.status !== 0) process.exit(1)
 }

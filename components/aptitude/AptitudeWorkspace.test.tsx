@@ -77,36 +77,46 @@ function openAdvanced() {
   if (!(summary.closest('details') as HTMLDetailsElement).open) fireEvent.click(summary)
 }
 function openRegions() { openAdvanced(); fireEvent.click(screen.getByText('Question area & excluded regions')) }
+async function renderWorkspace(single = true) {
+  const view = render(<AptitudeWorkspace />)
+  await waitFor(() => expect(screen.queryByText('Restoring saved questions…')).toBeNull())
+  if (single) {
+    openAdvanced()
+    fireEvent.change(screen.getByRole('combobox', { name: 'Analysis mode' }), { target: { value: 'single' } })
+    fireEvent.click(screen.getByText('Advanced options'))
+  }
+  return view
+}
 async function manualAnswer() {
   fireEvent.click(screen.getByRole('button', { name: 'Capture now' }))
   await complete(pending.length - 1)
 }
 
 describe('aptitude workspace', () => {
-  it('opens setup for a direct practice link from the tools catalog', () => {
+  it('opens setup for a direct practice link from the tools catalog', async () => {
     const previous = window.location.href
     window.history.replaceState(null, '', '#aptitude-practice')
     try {
-      render(<AptitudeWorkspace />)
+      await renderWorkspace(false)
       expect((screen.getByText('Advanced options').closest('details') as HTMLDetailsElement).open).toBe(true)
       expect(screen.getByRole('button', { name: 'Try a practice question' })).toBeTruthy()
     } finally { window.history.replaceState(null, '', previous) }
   })
 
-  it('defaults to single and discloses additional model calls before comparison is started', async () => {
-    render(<AptitudeWorkspace />)
+  it('defaults to Claude plus OpenAI and discloses both model calls before analysis starts', async () => {
+    await renderWorkspace(false)
     // jsdom does not hide descendants of closed details in role queries.
     // The browser suite also asserts these controls are actually invisible.
     expect((screen.getByText('Advanced options').closest('details') as HTMLDetailsElement).open).toBe(false)
     expect(screen.queryByRole('region', { name: 'Question history' })).toBeNull()
     openAdvanced()
     const mode = screen.getByRole('combobox', { name: 'Analysis mode' }) as HTMLSelectElement
-    expect(mode.value).toBe('single')
+    expect(mode.value).toBe('compare')
     chooseScreenshot()
     await screen.findByRole('button', { name: 'Analyze this capture' })
     fireEvent.change(mode, { target: { value: 'compare' } })
     expect(fetch).not.toHaveBeenCalled()
-    expect(screen.getByText(/same screenshot to 2–3 configured models/).textContent).toContain('additional provider credits')
+    expect(screen.getByText(/Claude and OpenAI analyze the same capture in parallel/).textContent).toContain('both models’ credits')
     expect(screen.getByRole('heading', { name: 'Ready to compare this capture.' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Analyze this capture' }))
     expect(pending[0].request.strategy).toBe('compare')
@@ -117,7 +127,7 @@ describe('aptitude workspace', () => {
 
   it('cancels and pauses on mode change, keeps the screenshot, and rejects retired automatic callbacks and results', async () => {
     mocks.screen.sharing = true
-    render(<AptitudeWorkspace />)
+    await renderWorkspace()
     openAdvanced()
     const mode = screen.getByRole('combobox', { name: 'Analysis mode' })
     fireEvent.change(mode, { target: { value: 'compare' } })
@@ -144,7 +154,7 @@ describe('aptitude workspace', () => {
   })
 
   it('analyzes an uploaded screenshot without starting screen or microphone capture', async () => {
-    render(<AptitudeWorkspace />)
+    await renderWorkspace()
     expect(mocks.screen.start).not.toHaveBeenCalled()
     expect(mocks.options?.enabled).toBe(false)
     expect(fetch).not.toHaveBeenCalled()
@@ -167,7 +177,7 @@ describe('aptitude workspace', () => {
   })
 
   it('hides the previous answer as soon as a different image is chosen, while allowing explicit history review', async () => {
-    render(<AptitudeWorkspace />)
+    await renderWorkspace()
     chooseScreenshot()
     await screen.findByRole('button', { name: 'Analyze this capture' })
     fireEvent.click(screen.getByRole('button', { name: 'Analyze this capture' }))
@@ -196,7 +206,7 @@ describe('aptitude workspace', () => {
 
   it('keeps automatic detection active while solving and coalesces an unchanged manual capture', async () => {
     mocks.screen.sharing = true
-    render(<AptitudeWorkspace />)
+    await renderWorkspace()
     fireEvent.click(screen.getByRole('button', { name: 'Capture now' }))
     fireEvent.click(screen.getByRole('button', { name: 'Start automatic capture' }))
     expect(mocks.options?.enabled).toBe(true)
@@ -217,7 +227,7 @@ describe('aptitude workspace', () => {
 
   it('keeps the selected saved image paired with its answer while newer automatic captures arrive', async () => {
     mocks.screen.sharing = true
-    render(<AptitudeWorkspace />)
+    await renderWorkspace()
     await manualAnswer()
     const history = screen.getByLabelText('View a question') as HTMLSelectElement
     fireEvent.change(history, { target: { value: history.options[1].value } })
@@ -233,7 +243,7 @@ describe('aptitude workspace', () => {
 
   it('uses a local selector preview but analyzes a freshly sampled detailed crop', async () => {
     mocks.screen.sharing = true
-    render(<AptitudeWorkspace />)
+    await renderWorkspace()
     const selector = capture('selector-thumbnail')
     mocks.screen.sampleFrame.mockReturnValueOnce(frame(selector))
     fireEvent.click(screen.getByRole('button', { name: 'Select question area' }))
@@ -256,7 +266,7 @@ describe('aptitude workspace', () => {
 
   it('keeps the previous capture if applying an area fails and closes a selector when the browser stops sharing', async () => {
     mocks.screen.sharing = true
-    const view = render(<AptitudeWorkspace />)
+    const view = await renderWorkspace()
     await manualAnswer()
     fireEvent.click(screen.getByRole('button', { name: 'Select question area' }))
     mocks.screen.sampleFrame.mockReturnValueOnce({ kind: 'unavailable', reason: 'The source ended.' })
@@ -273,7 +283,7 @@ describe('aptitude workspace', () => {
 
   it('withholds the previous choice while a changed screen settles, including when paused before capturing it', async () => {
     mocks.screen.sharing = true
-    const { rerender } = render(<AptitudeWorkspace />)
+    const { rerender } = await renderWorkspace()
     await manualAnswer()
     fireEvent.click(screen.getByRole('button', { name: 'Start automatic capture' }))
     mocks.watcher.status = 'settling'
@@ -290,7 +300,7 @@ describe('aptitude workspace', () => {
   it('keeps a clearly labeled previous answer during compact changes but withholds it for a broad transition', async () => {
     mocks.screen.sharing = true
     mocks.screen.sourceLabel = 'web-contents-media-stream://opaque-internal-id'
-    const view = render(<AptitudeWorkspace />)
+    const view = await renderWorkspace()
     await manualAnswer()
     fireEvent.click(screen.getByRole('button', { name: 'Start automatic capture' }))
     mocks.watcher.status = 'checking'
@@ -310,7 +320,7 @@ describe('aptitude workspace', () => {
 
   it.each(['pause', 'stop', 'browser stop'] as const)('does not relabel a compact-change answer as current after %s', async (action) => {
     mocks.screen.sharing = true
-    const view = render(<AptitudeWorkspace />)
+    const view = await renderWorkspace()
     await manualAnswer()
     fireEvent.click(screen.getByRole('button', { name: 'Start automatic capture' }))
     mocks.watcher.status = 'checking'
@@ -328,7 +338,7 @@ describe('aptitude workspace', () => {
 
   it('stops the existing source before requesting a replacement and never presents its old answer for the new preview', async () => {
     mocks.screen.sharing = true
-    render(<AptitudeWorkspace />)
+    await renderWorkspace()
     await manualAnswer()
     mocks.screen.sampleFrame.mockReturnValue(frame(capture('replacement-screen')))
     openAdvanced()
@@ -344,7 +354,7 @@ describe('aptitude workspace', () => {
 
   it('invalidates unmasked previews on region changes and sends only the refreshed capture', async () => {
     mocks.screen.sharing = true
-    render(<AptitudeWorkspace />)
+    await renderWorkspace()
     await manualAnswer()
     openRegions()
     fireEvent.click(screen.getByRole('button', { name: 'Add excluded region' }))
@@ -369,7 +379,7 @@ describe('aptitude workspace', () => {
     mocks.screen.sharing = true
     let finishUpload!: (value: AptitudeCapture) => void
     mocks.read.mockImplementationOnce(() => new Promise((resolve) => { finishUpload = resolve }))
-    render(<AptitudeWorkspace />)
+    await renderWorkspace()
     openRegions()
     chooseScreenshot()
     expect((screen.getByRole('button', { name: 'Start automatic capture' }) as HTMLButtonElement).disabled).toBe(true)
@@ -381,9 +391,9 @@ describe('aptitude workspace', () => {
     expect(fetch).not.toHaveBeenCalled()
   })
 
-  it('resets automatic capture and aborts the request when sharing ends in the browser', () => {
+  it('resets automatic capture and aborts the request when sharing ends in the browser', async () => {
     mocks.screen.sharing = true
-    const { rerender } = render(<AptitudeWorkspace />)
+    const { rerender } = await renderWorkspace()
     fireEvent.click(screen.getByRole('button', { name: 'Start automatic capture' }))
     act(() => mocks.options!.onCapture(capture('active-screen')))
     mocks.screen.sharing = false
@@ -397,7 +407,7 @@ describe('aptitude workspace', () => {
   })
 
   it('explains missing evidence without inventing an answer and keeps recapture reachable', async () => {
-    render(<AptitudeWorkspace />)
+    await renderWorkspace()
     chooseScreenshot()
     await waitFor(() => expect(screen.getByRole('button', { name: 'Analyze this capture' })).toBeTruthy())
     fireEvent.click(screen.getByRole('button', { name: 'Analyze this capture' }))
@@ -416,7 +426,7 @@ describe('aptitude workspace', () => {
 
   it('manual Analyze reads the current shared screen before detection catches up', async () => {
     mocks.screen.sharing = true
-    render(<AptitudeWorkspace />)
+    await renderWorkspace()
     await manualAnswer()
     const fresh = capture('changed-before-detector')
     mocks.screen.sampleFrame.mockReturnValue(frame(fresh))
@@ -430,7 +440,7 @@ describe('aptitude workspace', () => {
 
   it('explains an unchanged-image reuse instead of making Analyze appear unresponsive', async () => {
     mocks.screen.sharing = true
-    render(<AptitudeWorkspace />)
+    await renderWorkspace()
     await manualAnswer()
     fireEvent.click(screen.getByRole('button', { name: 'Analyze this capture' }))
     expect(pending).toHaveLength(1)
@@ -446,7 +456,7 @@ describe('aptitude workspace', () => {
 
   it('keeps manual Analyze usable while the changed screen is settling', async () => {
     mocks.screen.sharing = true
-    const view = render(<AptitudeWorkspace />)
+    const view = await renderWorkspace()
     await manualAnswer()
     fireEvent.click(screen.getByRole('button', { name: 'Start automatic capture' }))
     mocks.watcher.status = 'settling'
@@ -464,7 +474,7 @@ describe('aptitude workspace', () => {
 
   it('reports an unavailable manual source without resending the previous image', async () => {
     mocks.screen.sharing = true
-    render(<AptitudeWorkspace />)
+    await renderWorkspace()
     await manualAnswer()
     mocks.screen.sampleFrame.mockReturnValue({ kind: 'unavailable', reason: 'The screen is not ready.' })
     fireEvent.click(screen.getByRole('button', { name: 'Analyze this capture' }))

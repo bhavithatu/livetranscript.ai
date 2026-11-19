@@ -61,3 +61,4 @@ qa/refinement/generated-fonts.css
 # Generated proof only; never commit a fabricated readiness receipt.
 /public/release-readiness.json
 /public/aptitude-readiness.json
+/public/aptitude-model-selection.json

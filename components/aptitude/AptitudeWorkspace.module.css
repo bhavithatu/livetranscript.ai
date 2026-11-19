@@ -1,7 +1,7 @@
 .workspace { width: 100%; min-width: 0; color: var(--ink); display: flex; flex-direction: column; gap: 20px; padding: clamp(12px, 2vw, 24px); }
 .controls, .preview, .history, .answer, .practice { background: var(--reader); border: 1px solid var(--line); border-radius: 16px; }
 .controls { padding: 20px; }
-.controlHeading { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.controlHeading { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .controlHeading h2, .sectionHeading h2, .practice h2 { font-size: 15px; font-weight: 650; line-height: 1.4; }
 .controlHeading p { margin-top: 5px; max-width: 620px; font-size: 13px; line-height: 1.6; color: var(--muted); }
 .category, .historySelect { display: flex; flex-direction: column; gap: 6px; color: var(--muted); font-size: 12px; font-weight: 550; }
@@ -84,24 +84,24 @@
 .observed blockquote { margin: 12px 0; border-left: 2px solid var(--line-strong, var(--line)); padding-left: 16px; color: var(--muted); white-space: pre-wrap; }
 .pinned { padding: 12px 16px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--reader); font-size: 12px; color: var(--muted); }
 .comparison { min-width: 0; margin-top: 20px; }
-.comparisonBanner { border: 1px solid var(--line-strong, var(--line)); border-left: 3px solid var(--muted); border-radius: 12px; background: var(--surface-soft, var(--paper)); padding: 18px; }
+.comparisonBanner { border: 1px solid var(--line); border-radius: 10px; background: var(--surface-soft, var(--paper)); padding: 12px 14px; margin-top: 14px; }
 .comparisonBanner[data-resolved="true"] { border-left-color: var(--signal); background: color-mix(in srgb, var(--signal) 4%, var(--reader)); }
-.comparisonBanner h3 { margin: 8px 0; font-size: 21px; line-height: 1.35; letter-spacing: -.025em; font-weight: 650; }
-.comparisonBanner > p:not(.eyebrow), .comparisonBanner li { font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+.comparisonBanner h3 { margin: 0 0 5px; font-size: 14px; line-height: 1.4; font-weight: 650; }
+.comparisonBanner > p:not(.eyebrow), .comparisonBanner li { font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
 .comparisonBanner ul { margin: 10px 0 0; padding-left: 18px; list-style: disc; }
 .modelResultsHeading { margin: 24px 0 14px; }
 .modelResultsHeading h3 { font-size: 15px; font-weight: 650; }
 .modelResultsHeading p { font-size: 12px; line-height: 1.65; color: var(--muted); margin-top: 5px; }
-.modelGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 12px; align-items: start; }
+.modelGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: stretch; }
 .modelCard { min-width: 0; border: 1px solid var(--line); border-radius: 12px; padding: 16px; background: var(--reader); overflow-wrap: anywhere; }
 .modelCard[data-selected="true"] { border-color: color-mix(in srgb, var(--signal) 45%, var(--line)); }
 .modelHeader { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .modelHeader > div { min-width: 0; }
-.modelHeader h4 { font-size: 14px; font-weight: 650; line-height: 1.5; margin-top: 4px; overflow-wrap: anywhere; }
-.modelTiming { color: var(--muted); font-size: 11px; line-height: 1.6; margin-top: 10px; font-variant-numeric: tabular-nums; }
-.modelAnswer { padding: 16px 0; }
+.modelHeader h3 { font-size: 16px; font-weight: 650; line-height: 1.4; overflow-wrap: anywhere; }
+.modelTiming { color: var(--muted); font-size: 11px; line-height: 1.6; font-variant-numeric: tabular-nums; }
+.modelAnswer { padding: 14px 0 10px; }
 .modelAnswer > p:last-child, .candidateMessage, .candidateError { font-size: 13px; line-height: 1.65; margin-top: 8px; }
-.modelAnswer .modelChoice { font-size: 21px; font-weight: 650; line-height: 1.35; margin-top: 7px; letter-spacing: -.025em; }
+.modelAnswer .modelChoice { font-size: clamp(18px, 2vw, 25px); font-weight: 650; line-height: 1.35; margin: 0; letter-spacing: -.025em; color: var(--signal); }
 .candidateError { color: var(--stop); }
 .candidateCheck { border-top: 1px solid var(--line); padding-top: 13px; margin-top: 12px; color: var(--muted); }
 .candidateCheck p, .candidateCheck li { font-size: 11px; line-height: 1.65; margin-top: 5px; }
@@ -152,3 +152,22 @@
   .coordinateGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .answerHeader { flex-wrap: wrap; gap: 8px; }
 }
+
+/* Answers remain first; supporting detail does not delay or displace them. */
+.modelIdentity { margin-top: 4px; color: var(--muted); font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; }
+.modelActions { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.compactActions { margin-top: 0; }
+.compactActions > button { min-height: 38px; padding: 8px 11px; font-size: 12px; }
+.confidence { display: grid; grid-template-columns: 1fr auto; align-items: baseline; gap: 3px 10px; margin-top: 14px; padding-top: 11px; border-top: 1px solid var(--line); font-size: 11px; color: var(--muted); }
+.confidence strong { font-size: 20px; font-weight: 650; color: var(--ink); font-variant-numeric: tabular-nums; }
+.confidence small { grid-column: 1 / -1; font-size: 10px; line-height: 1.5; }
+.confidenceNote, .comparisonStatus { margin-top: 10px; font-size: 11px; line-height: 1.6; color: var(--muted); }
+.noModelAnswer { font-size: 15px; line-height: 1.5; font-weight: 550; margin: 18px 0 12px; }
+.pendingModel { background: var(--surface-soft, var(--paper)); }
+.pendingCompact { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin: 14px 0; font-size: 12px; color: var(--muted); }
+.pendingCompact button { min-height: 38px; padding: 8px 12px; border-radius: 8px; }
+.timingSummary { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; white-space: nowrap; font-size: 10px; line-height: 1.5; color: var(--muted); }
+.exportButton { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 40px; width: 100%; border-radius: 8px; font-size: 12px; margin-bottom: 12px; }
+.archiveNotice { margin-top: 10px; font-size: 12px; line-height: 1.6; color: var(--ink); }
+.savedStatus { margin-top: 8px; font-size: 11px; line-height: 1.6; color: var(--muted); }
+@media (max-width: 450px) { .modelGrid { grid-template-columns: minmax(0, 1fr); } .timingSummary { align-items: flex-start; } }

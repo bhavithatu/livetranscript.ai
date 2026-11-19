@@ -4,6 +4,10 @@ import type { AptitudeCapture } from './captureDetector'
 import { APTITUDE_CONTRACT_HEADER, APTITUDE_CONTRACT_VERSION, type AptitudeRequest, type AptitudeResult } from './schema'
 import { APTITUDE_HISTORY_LIMIT, APTITUDE_REQUEST_TIMEOUT_MS, useAptitudeSession } from './useAptitudeSession'
 import { comparisonFixture } from '@/components/aptitude/comparisonTestFixtures'
+import { APTITUDE_PROGRESS_CONTENT_TYPE, encodeAptitudeProgressEvent } from './progress'
+import * as archiveModule from './sessionArchive'
+import type { AptitudeArchiveLoad } from './sessionArchive'
+import type { AptitudeSessionEntry } from './useAptitudeSession'
 
 function capture(id: string): AptitudeCapture {
   return { id, image: `data:image/png;base64,${btoa(id)}`, capturedAt: Date.now(), width: 100, height: 100, sourceHash: id }
@@ -34,7 +38,7 @@ beforeEach(() => {
     pending.push({ request: JSON.parse(init.body as string), signal: init.signal as AbortSignal, resolve })
   })))
 })
-afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals() })
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 async function complete(index: number, value: unknown = answer(pending[index].request), status = 200) {
   await act(async () => pending[index].resolve(new Response(JSON.stringify(value), { status })))
@@ -252,5 +256,122 @@ describe('aptitude request lifecycle', () => {
     expect(pending[0].signal.aborted).toBe(true)
     await complete(0)
     expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('shows each validated model promptly and keeps its first-answer timing after the final comparison', async () => {
+    const { result } = renderHook(useAptitudeSession)
+    act(() => { void result.current.analyze(capture('progress'), 'auto', 'compare') })
+    expect(fetch).toHaveBeenCalledWith('/api/aptitude/analyze', expect.objectContaining({ headers: expect.objectContaining({ Accept: APTITUDE_PROGRESS_CONTENT_TYPE }) }))
+    const final = comparisonFixture(answer(pending[0].request))
+    const identity = { captureId: final.captureId, questionVersion: final.questionVersion, sourceHash: final.sourceHash }
+    let writer!: ReadableStreamDefaultController<Uint8Array>
+    const stream = new ReadableStream<Uint8Array>({ start(controller) { writer = controller } })
+    await act(async () => {
+      pending[0].resolve(new Response(stream, { headers: { 'Content-Type': APTITUDE_PROGRESS_CONTENT_TYPE } }))
+      writer.enqueue(encodeAptitudeProgressEvent({ type: 'start', ...identity,
+        models: final.comparison!.candidates.map(candidate => ({ modelId: candidate.modelId, model: candidate.model!, provider: candidate.provider })) }))
+    })
+    expect(result.current.current?.progress?.models).toHaveLength(2)
+    expect(result.current.current?.progress?.candidates).toHaveLength(0)
+    await act(async () => {
+      vi.advanceTimersByTime(2_300)
+      writer.enqueue(encodeAptitudeProgressEvent({ type: 'candidate', ...identity, candidate: final.comparison!.candidates[0] }))
+    })
+    expect(result.current.current).toMatchObject({ status: 'analyzing', result: null, progress: { firstAnswerMs: 2_300 } })
+    expect(result.current.current?.progress?.candidates[0].observation?.answer).toBeTruthy()
+    await act(async () => {
+      vi.advanceTimersByTime(5_000)
+      writer.enqueue(encodeAptitudeProgressEvent({ type: 'candidate', ...identity, candidate: final.comparison!.candidates[1] }))
+      writer.enqueue(encodeAptitudeProgressEvent({ type: 'result', result: final }))
+      writer.close()
+    })
+    expect(result.current.current).toMatchObject({ status: 'complete', elapsedMs: 7_300, progress: { firstAnswerMs: 2_300 } })
+    expect(result.current.current?.result).toEqual(final)
+  })
+
+  it('retains a completed model after a disconnected comparison, then isolates a newer capture', async () => {
+    const { result } = renderHook(useAptitudeSession)
+    act(() => { void result.current.analyze(capture('interrupted'), 'auto', 'compare') })
+    const final = comparisonFixture(answer(pending[0].request))
+    const identity = { captureId: final.captureId, questionVersion: final.questionVersion, sourceHash: final.sourceHash }
+    const stream = new ReadableStream<Uint8Array>({ start(controller) {
+      controller.enqueue(encodeAptitudeProgressEvent({ type: 'start', ...identity, models: final.comparison!.candidates.map(candidate => ({ modelId: candidate.modelId, model: candidate.model!, provider: candidate.provider })) }))
+      controller.enqueue(encodeAptitudeProgressEvent({ type: 'candidate', ...identity, candidate: final.comparison!.candidates[0] }))
+      controller.close()
+    } })
+    await act(async () => pending[0].resolve(new Response(stream, { headers: { 'Content-Type': APTITUDE_PROGRESS_CONTENT_TYPE } })))
+    expect(result.current.current).toMatchObject({ status: 'error', result: null })
+    expect(result.current.current?.error).toMatch(/Completed model answers remain available/)
+    expect(result.current.current?.progress?.candidates).toHaveLength(1)
+    act(() => { void result.current.analyze(capture('next-question'), 'auto', 'compare') })
+    expect(result.current.current?.progress).toBeNull()
+    expect(result.current.entries[0].progress?.candidates).toHaveLength(1)
+    await complete(1, comparisonFixture(answer(pending[1].request)))
+    expect(result.current.current?.result?.captureId).toBe('next-question')
+  })
+
+  it('recovers the latest saved capture as pinned history without making another provider call', async () => {
+    const screenshot = capture('saved')
+    const saved: AptitudeSessionEntry = { id: 'saved', capture: screenshot, category: 'auto', strategy: 'single', questionVersion: 1,
+      status: 'complete', result: answer({ captureId: 'saved', questionVersion: 1, image: screenshot.image, category: 'auto' }), error: null,
+      startedAt: screenshot.capturedAt, finishedAt: screenshot.capturedAt + 200, elapsedMs: 200 }
+    const storage = { load: vi.fn().mockResolvedValue({ entries: [saved], notice: 'Restored 1 question.', savedAt: Date.now() }),
+      save: vi.fn().mockResolvedValue({ saved: true, notice: null, savedAt: Date.now() }), clear: vi.fn(), close: vi.fn() }
+    vi.spyOn(archiveModule, 'createAptitudeSessionArchive').mockReturnValue(storage)
+    const { result } = renderHook(useAptitudeSession)
+    await act(async () => {})
+    expect(result.current.archiveReady).toBe(true)
+    expect(result.current.current?.capture).toBe(screenshot)
+    expect(result.current.selected?.id).toBe('saved')
+    expect(result.current.pinned).toBe(true)
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('cancels and hides the previous account without saving its captures into a newly signed-in account', async () => {
+    const savedEntry = (id: string): AptitudeSessionEntry => ({ id, capture: capture(id), category: 'auto', strategy: 'single', questionVersion: 0,
+      status: 'cancelled', result: null, error: null, startedAt: Date.now(), finishedAt: Date.now(), elapsedMs: 0 })
+    let restoreSecond!: (value: AptitudeArchiveLoad) => void
+    const first = { load: vi.fn().mockResolvedValue({ entries: [savedEntry('account-one-saved')], notice: null, savedAt: Date.now() }),
+      save: vi.fn().mockResolvedValue({ saved: true, notice: null, savedAt: Date.now() }), clear: vi.fn(), close: vi.fn() }
+    const second = { load: vi.fn().mockImplementation(() => new Promise<AptitudeArchiveLoad>(resolve => { restoreSecond = resolve })),
+      save: vi.fn().mockResolvedValue({ saved: true, notice: null, savedAt: Date.now() }), clear: vi.fn(), close: vi.fn() }
+    const factory = vi.spyOn(archiveModule, 'createAptitudeSessionArchive').mockReturnValueOnce(first).mockReturnValueOnce(second)
+    const { result, rerender } = renderHook(({ ownerId }) => useAptitudeSession({ archiveOwnerId: ownerId }), { initialProps: { ownerId: 'account-one' } })
+    await act(async () => {})
+    act(() => { void result.current.analyze(capture('account-one-running')) })
+    expect(result.current.entries).toHaveLength(2)
+    rerender({ ownerId: 'account-two' })
+    expect(pending[0].signal.aborted).toBe(true)
+    expect(result.current.entries).toEqual([])
+    expect(result.current.current).toBeNull()
+    expect(result.current.archiveReady).toBe(false)
+    expect(second.save).not.toHaveBeenCalled()
+    expect(first.close).toHaveBeenCalledOnce()
+    expect(factory).toHaveBeenNthCalledWith(1, { ownerId: 'account-one' })
+    expect(factory).toHaveBeenNthCalledWith(2, { ownerId: 'account-two' })
+    await complete(0)
+    expect(result.current.entries).toEqual([])
+    await act(async () => restoreSecond({ entries: [savedEntry('account-two-saved')], notice: null, savedAt: Date.now() }))
+    expect(result.current.archiveReady).toBe(true)
+    expect(result.current.selected?.id).toBe('account-two-saved')
+    expect(second.save).toHaveBeenCalled()
+    expect(second.save.mock.calls.flatMap(([entries]) => (entries as AptitudeSessionEntry[]).map(entry => entry.id))).toEqual(['account-two-saved'])
+  })
+
+  it.each(['new capture', 'clear'] as const)('fences late restoration after %s', async action => {
+    let restore!: (value: AptitudeArchiveLoad) => void
+    const storage = { load: vi.fn().mockImplementation(() => new Promise<AptitudeArchiveLoad>(resolve => { restore = resolve })),
+      save: vi.fn().mockResolvedValue({ saved: true, notice: null, savedAt: Date.now() }),
+      clear: vi.fn().mockResolvedValue({ saved: true, notice: null, savedAt: null }), close: vi.fn() }
+    vi.spyOn(archiveModule, 'createAptitudeSessionArchive').mockReturnValue(storage)
+    const { result } = renderHook(useAptitudeSession)
+    act(() => { if (action === 'clear') result.current.clear(); else void result.current.analyze(capture('fresh')) })
+    const saved: AptitudeSessionEntry = { id: 'old', capture: capture('old'), category: 'auto', strategy: 'single', questionVersion: 0,
+      status: 'cancelled', result: null, error: null, startedAt: Date.now(), finishedAt: Date.now(), elapsedMs: 0 }
+    await act(async () => restore({ entries: [saved], notice: null, savedAt: Date.now() }))
+    expect(result.current.archiveReady).toBe(true)
+    expect(result.current.entries.some(entry => entry.id === 'old')).toBe(false)
+    if (action === 'clear') expect(result.current.entries).toEqual([])
+    else expect(result.current.current?.id).toBe('fresh')
   })
 })

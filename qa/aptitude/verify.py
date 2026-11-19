@@ -2,6 +2,10 @@
 
 Run against a local Next server with no Clerk configuration (CI uses `pnpm start`
 after building). The unauthenticated probe must pass before any image is sent.
+For account-scoped persistence coverage, additionally run against the existing
+dev-only PREVIEW_NO_AUTH=1 server with APTITUDE_QA_PREVIEW_OWNER=1. That pass checks
+the invalid-body boundary and uses a one-shot auth-error fixture; every image
+request is intercepted. The ordinary pass always checks the real 401 boundary.
 This is browser integration evidence, never a live-model accuracy benchmark or
 an operating-system screen-picker certification. No paid API calls are made.
 """
@@ -17,7 +21,12 @@ import time
 from playwright.async_api import Error as PlaywrightError, async_playwright, expect
 
 BASE = os.environ.get('APTITUDE_QA_URL', 'http://127.0.0.1:3000').rstrip('/')
+PREVIEW_OWNER = os.environ.get('APTITUDE_QA_PREVIEW_OWNER') == '1'
+if PREVIEW_OWNER:
+    assert re.match(r'^http://(?:localhost|127\.0\.0\.1):[0-9]+$', BASE), 'Preview-owner QA is local only'
 OUT = pathlib.Path('qa-results/aptitude')
+if PREVIEW_OWNER:
+    OUT = OUT / 'preview-owner'
 OUT.mkdir(parents=True, exist_ok=True)
 
 # The app still calls getDisplayMedia, uses a real MediaStream and samples a real
@@ -56,6 +65,43 @@ SCREEN = r"""(() => {
   if (!navigator.mediaDevices) Object.defineProperty(navigator, 'mediaDevices', {value: devices});
 })()"""
 
+# The provider response remains an explicit fixture. This wrapper delivers its
+# validated NDJSON events in independently controlled chunks so browser checks
+# can inspect the first card before releasing the peer. It does not benchmark
+# provider latency; the server transport has separate route/protocol tests.
+PROGRESSIVE_RESPONSE = r"""(() => {
+  const originalFetch = window.fetch.bind(window);
+  const fixture = window.__aptitudeProgress = { next: false, release: null };
+  window.fetch = async (input, init) => {
+    const url = typeof input === 'string' ? input : input.url;
+    if (!fixture.next || !url.endsWith('/api/aptitude/analyze')) return originalFetch(input, init);
+    fixture.next = false;
+    const response = await originalFetch(input, init);
+    if (!response.ok) return response;
+    const result = await response.json(), candidates = result.comparison.candidates;
+    const identity = { captureId: result.captureId, questionVersion: result.questionVersion, sourceHash: result.sourceHash };
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        let closed = false;
+        const emit = event => controller.enqueue(encoder.encode(JSON.stringify(event) + '\n'));
+        const abort = () => { if (!closed) { closed = true; fixture.release = null; controller.error(new DOMException('Aborted', 'AbortError')); } };
+        init?.signal?.addEventListener('abort', abort, { once: true });
+        emit({ type: 'start', ...identity, models: candidates.map(({ modelId, provider, model }) => ({ modelId, provider, model })) });
+        emit({ type: 'candidate', ...identity, candidate: candidates[0] });
+        fixture.release = () => {
+          if (closed) return;
+          for (const candidate of candidates.slice(1)) emit({ type: 'candidate', ...identity, candidate });
+          emit({ type: 'result', result });
+          closed = true; fixture.release = null; controller.close();
+          init?.signal?.removeEventListener('abort', abort);
+        };
+      }
+    });
+    return new Response(stream, { status: 200, headers: { 'Content-Type': 'application/x-ndjson' } });
+  };
+})()"""
+
 
 def response_for(body, number=0, status='solved'):
     before, after = (72, 90) if number == 0 else (80, 80 + 20 * number)
@@ -69,7 +115,7 @@ def response_for(body, number=0, status='solved'):
     }
     image_hash = hashlib.sha256(base64.b64decode(body['image'].split(',', 1)[1])).hexdigest()
     answer = {'selectedOptionIds': ['B'], 'value': str(value), 'unit': '%',
-              'summary': f'The increase is {value}%.',
+              'summary': f'The increase is {value}%.', 'confidence': 87,
               'workedExplanation': [f'The increase is {after} − {before} = {after-before}.', f'Divide by {before} and multiply by 100 to get {value}%.'],
               'evidence': [f'The captured question gives {before} and {after} tasks.'],
               'calculation': {'expression': f'({after}-{before})/{before}*100', 'claimedValue': value, 'decimalPlaces': None}}
@@ -100,13 +146,14 @@ def comparison_response_for(body, decision):
     candidates = []
     for index, (provider, model) in enumerate(models):
         candidate = {'modelId': f'{provider}:{model}', 'provider': provider,
-                     'model': model, 'status': 'complete', 'durationMs': 0, 'error': None}
+                     'model': model, 'status': 'complete', 'durationMs': 1200 + index * 1600, 'error': None}
         if decision == 'insufficient' and index == 1:
             candidate.update({'status': 'timed_out', 'model': None, 'observation': None,
                               'verification': None, 'error': 'Sample timeout: this model did not return an answer.'})
             candidates.append(candidate)
             continue
         observation = {key: copy.deepcopy(base[key]) for key in ['category', 'status', 'question', 'answer', 'message']}
+        observation['answer']['confidence'] = 87 if index == 0 else 91
         if decision == 'evidence_mismatch' and index == 1:
             observation['question']['stem'] = 'A team completed 72 tasks before and 90 after. What is the percentage increase?'
         for option in observation['question']['options']:
@@ -147,7 +194,7 @@ def comparison_response_for(body, decision):
 
 
 async def main():
-    report = {'kind': 'aptitude-browser-integration', 'liveModel': False, 'nativePicker': False,
+    report = {'kind': 'aptitude-browser-integration', 'liveModel': False, 'nativePicker': False, 'previewOwner': PREVIEW_OWNER, 'persistenceTested': False,
               'checks': [], 'layouts': [], 'browserErrors': [], 'stubErrors': []}
     requests = []
     state = {'number': 0, 'status': 'solved', 'delay': 0, 'comparison': 'agreement'}
@@ -159,6 +206,7 @@ async def main():
         # does not change Playwright's otherwise five-second expect deadline.
         expect.set_options(timeout=15000)
         await page.add_init_script(SCREEN)
+        await page.add_init_script(PROGRESSIVE_RESPONSE)
         page.on('pageerror', lambda error: report['browserErrors'].append(str(error)))
 
         async def wait_for_requests(expected):
@@ -182,7 +230,8 @@ async def main():
             # accidentally launched with an auth preview bypass. Fail early in
             # that case, before testing the real image submission below.
             probe = await page.request.post(BASE + '/api/aptitude/analyze', data={})
-            assert probe.status == 401, f'Expected an unauthenticated local server, received HTTP {probe.status}'
+            expected_probe_status = 400 if PREVIEW_OWNER else 401
+            assert probe.status == expected_probe_status, f'Expected HTTP {expected_probe_status} for empty-body local probe, received HTTP {probe.status}'
             await page.goto(BASE + '/tools', wait_until='networkidle')
             await expect(page.get_by_role('heading', name='Explore all tools', exact=True)).to_be_visible()
             for label in ['Questions and analysis', 'Practice and evaluation', 'Capture and collaboration', 'Make it yours']:
@@ -197,6 +246,10 @@ async def main():
             await expect(page.get_by_role('combobox', name='Analysis mode', exact=True)).not_to_be_visible()
             await expect(page.get_by_role('region', name='AI modes', exact=True)).not_to_be_visible()
             await set_advanced(True)
+            await expect(page.get_by_role('combobox', name='Analysis mode', exact=True)).to_have_value('compare')
+            await expect(page.get_by_text('Claude and OpenAI analyze the same capture in parallel.', exact=False)).to_be_visible()
+            await page.get_by_role('combobox', name='Analysis mode', exact=True).select_option('single')
+            report['checks'].append('Claude plus OpenAI is the default and both-provider usage is disclosed before capture')
             await page.get_by_role('button', name='Try a practice question', exact=True).click()
             await set_advanced(False)
             preview = page.get_by_alt_text('Question screenshot ready for analysis')
@@ -204,9 +257,12 @@ async def main():
             sample = await preview.get_attribute('src')
             upload = OUT / 'owned-practice-input.png'
             upload.write_bytes(base64.b64decode(sample.split(',', 1)[1]))
+            if PREVIEW_OWNER:
+                await page.route('**/api/aptitude/analyze', lambda route: route.fulfill(status=401, json={'error': 'Sign in to analyze an aptitude question.'}), times=1)
             await page.get_by_role('button', name='Analyze this capture', exact=True).click()
             await expect(page.get_by_role('alert').filter(has_text='Sign in')).to_be_visible()
-            report['checks'].append('Real Next API rejects unauthenticated analysis and retains capture for retry')
+            report['checks'].append('Auth-error fixture retains capture for retry; real invalid-body API boundary verified' if PREVIEW_OWNER
+                                    else 'Real Next API rejects unauthenticated analysis and retains capture for retry')
 
             async def serve(route):
                 body = route.request.post_data_json
@@ -427,10 +483,21 @@ async def main():
             await click_for_request(page.get_by_role('button', name='Analyze this capture', exact=True))
             comparison = page.get_by_role('region', name='Model comparison', exact=True)
             await expect(comparison.get_by_role('heading', name='Models agree', exact=True)).to_be_visible()
-            await expect(page.get_by_role('heading', name='B — 25%', exact=True)).to_be_visible()
             await expect(comparison.get_by_role('article')).to_have_count(2)
+            await expect(comparison.get_by_role('heading', name='Claude', exact=True)).to_be_visible()
+            await expect(comparison.get_by_role('heading', name='OpenAI', exact=True)).to_be_visible()
+            for model, confidence in [('anthropic:claude-sonnet-4-5', '87%'), ('openai:gpt-4.1', '91%')]:
+                card = comparison.get_by_role('article', name=model, exact=True)
+                await expect(card.locator('p').filter(has_text=re.compile(r'^B — 25%$'))).to_be_visible()
+                await expect(card.get_by_text(confidence, exact=True)).to_be_visible()
+                await expect(card.get_by_text('Uncalibrated estimate', exact=True)).to_be_visible()
+                assert not await card.locator('details').evaluate('(node) => node.open')
+                assert await card.evaluate('(node) => !!(node.compareDocumentPosition(node.parentElement.parentElement.querySelector("[data-resolved] h3")) & Node.DOCUMENT_POSITION_FOLLOWING)')
+            await comparison.get_by_role('button', name='Copy Claude answer', exact=True).click()
+            assert await page.evaluate('navigator.clipboard.readText()') == 'B — 25%'
+            await expect(comparison.get_by_role('button', name='Claude answer copied', exact=True)).to_be_visible()
             assert requests[-1]['strategy'] == 'compare'
-            report['checks'].append('Explicit comparison selection makes no call; two agreeing model answers support the visible recommendation')
+            report['checks'].append('Two provider answer cards appear first with separate copy actions, model-estimated confidence, response times and collapsed details')
 
             # A mode is part of history/cache identity. Looking at single mode
             # cannot accidentally reuse a comparison response or rewrite it.
@@ -463,7 +530,9 @@ async def main():
             if await page.evaluate('document.documentElement.classList.contains("lt-dark")'):
                 await page.get_by_role('button', name='Switch to light mode', exact=True).click()
             await comparison.screenshot(path=str(OUT / 'aptitude-comparison-disagreement.png'))
-            report['checks'].append('A one-to-one split withholds recommendation and exposes both explanations')
+            await comparison.get_by_role('button', name='Copy OpenAI answer', exact=True).click()
+            assert await page.evaluate('navigator.clipboard.readText()') == 'A — 20%'
+            report['checks'].append('A one-to-one split withholds a combined selection, retains both answers, and copies the requested provider choice')
 
             state['comparison'] = 'evidence_mismatch'
             await click_for_request(page.get_by_role('button', name='Retry this capture', exact=True))
@@ -478,18 +547,82 @@ async def main():
             await expect(comparison.get_by_role('heading', name='Comparison incomplete', exact=True)).to_be_visible()
             assert await page.get_by_text('Suggested answer', exact=True).count() == 0
             await expect(comparison.get_by_text('Timed out', exact=True)).to_be_visible()
-            report['checks'].append('One usable answer plus a timed-out model is incomplete and cannot publish a recommendation')
+            timed_out = comparison.get_by_role('article', name='openai:gpt-4.1', exact=True)
+            await expect(timed_out.get_by_text('Model confidence', exact=True)).to_have_count(0)
+            await expect(timed_out.get_by_role('button')).to_have_count(0)
+            report['checks'].append('A timed-out provider has no fabricated answer, confidence or copy action; the usable peer remains visible')
 
             state['comparison'] = 'majority'
             await click_for_request(page.get_by_role('button', name='Retry this capture', exact=True))
             await expect(comparison.get_by_role('heading', name='Majority agreement', exact=True)).to_be_visible()
-            await expect(page.get_by_role('heading', name='B — 25%', exact=True)).to_be_visible()
             await expect(comparison.get_by_role('article')).to_have_count(3)
+            await expect(comparison.get_by_role('article', name='anthropic:claude-sonnet-4-5', exact=True).locator('p').filter(has_text=re.compile(r'^B — 25%$'))).to_be_visible()
             await expect(comparison.get_by_role('article', name='openai:gpt-4.1-mini', exact=True).locator('p').filter(has_text=re.compile(r'^A — 20%$'))).to_be_visible()
             await comparison.get_by_text('How these answers were compared', exact=True).click()
             await expect(comparison.get_by_text('Sample model responses for this screen preview. No live provider calls or model latency benchmark.', exact=True)).to_be_visible()
             await comparison.get_by_text('How these answers were compared', exact=True).click()
             report['checks'].append('Two-to-one agreement is labeled as a majority; dissent and arithmetic-check limits remain visible')
+
+            state['comparison'] = 'agreement'
+            await page.evaluate('window.__aptitudeProgress.next = true')
+            await click_for_request(page.get_by_role('button', name='Retry this capture', exact=True))
+            await expect(page.get_by_role('heading', name='1 of 2 responses ready', exact=True)).to_be_visible()
+            first_card = comparison.get_by_role('article', name='anthropic:claude-sonnet-4-5', exact=True)
+            waiting_card = comparison.get_by_role('article', name='openai:gpt-4.1', exact=True)
+            await expect(first_card.get_by_text('87%', exact=True)).to_be_visible()
+            await expect(first_card.get_by_text('Response time 1.2 s', exact=True)).to_be_visible()
+            await expect(waiting_card.get_by_text('Waiting for this model…', exact=True)).to_be_visible()
+            await expect(waiting_card.get_by_text('Model confidence', exact=True)).to_have_count(0)
+            await expect(comparison.get_by_role('heading', name='Models agree', exact=True)).to_have_count(0)
+            await first_card.get_by_role('button', name='Copy Claude answer', exact=True).click()
+            await expect(first_card.get_by_role('button', name='Claude answer copied', exact=True)).to_be_focused()
+            assert await page.evaluate('navigator.clipboard.readText()') == 'B — 25%'
+            await page.evaluate('window.__aptitudeProgress.release()')
+            await expect(comparison.get_by_role('heading', name='Models agree', exact=True)).to_be_visible()
+            await expect(first_card.get_by_role('button', name='Claude answer copied', exact=True)).to_be_focused()
+            await expect(waiting_card.get_by_text('91%', exact=True)).to_be_visible()
+            await expect(waiting_card.get_by_text('Response time 2.8 s', exact=True)).to_be_visible()
+            await expect(page.get_by_text(re.compile(r'^First answer [0-9.]+ s$'))).to_be_visible()
+            report['checks'].append('Chunked response exposes first answer, confidence and copy while peer waits; copy focus survives comparison completion')
+
+            await expect(page.get_by_text('Up to 100 questions in this session.', exact=False)).to_be_visible()
+            async with page.expect_download() as download_event:
+                await page.get_by_role('button', name='Export session', exact=True).click()
+            download = await download_event.value
+            export_path = OUT / download.suggested_filename
+            await download.save_as(str(export_path))
+            archive = json.loads(export_path.read_text())
+            assert archive['counts']['retainedEntries'] == 2
+            assert archive['submittedAnswersRecorded'] is False and archive['answerKeyIncluded'] is False and archive['accuracy'] is None
+            exported = next(entry for entry in archive['entries'] if entry['strategy'] == 'compare')
+            assert exported['capture']['image'] == sample
+            assert [candidate['observation']['answer']['confidence'] for candidate in exported['result']['comparison']['candidates']] == [87, 91]
+            assert exported['progress']['firstAnswerMs'] is not None
+            assert len(exported['progress']['candidates']) == 2
+            report['checks'].append('Session JSON download contains exact screenshots, both answers, confidence and timing without inventing an assessment score')
+
+            if PREVIEW_OWNER:
+                await expect(page.get_by_text('Saved in this browser tab', exact=False)).to_be_visible()
+                retained_ids = await history_options.evaluate_all('(items) => items.map(item => item.value)')
+                count = len(requests)
+                await page.reload(wait_until='networkidle')
+                await expect(history_options).to_have_count(2)
+                assert await history_options.evaluate_all('(items) => items.map(item => item.value)') == retained_ids
+                # Recovery opens the most recently created entry. The single-mode
+                # entry was created after this comparison, which was then retried.
+                # Select the exported comparison explicitly and verify its data.
+                await history_select.select_option(exported['id'])
+                await expect(comparison.get_by_role('heading', name='Models agree', exact=True)).to_be_visible()
+                await expect(comparison.get_by_role('article')).to_have_count(2)
+                await expect(comparison.get_by_role('article', name='anthropic:claude-sonnet-4-5', exact=True).get_by_text('87%', exact=True)).to_be_visible()
+                await expect(comparison.get_by_role('article', name='openai:gpt-4.1', exact=True).get_by_text('91%', exact=True)).to_be_visible()
+                await expect(page.get_by_text('Saved in this browser tab', exact=False)).to_be_visible()
+                await expect(saved_preview).to_have_attribute('src', sample)
+                assert len(requests) == count, 'Restoring a saved session must not send new provider requests'
+                report['persistenceTested'] = True
+                report['checks'].append('Same-tab reload restores questions, provider answers and exact saved image without another model request')
+            else:
+                report['checks'].append('Signed-out captures remain exportable without an account; persistence requires the separate preview-owner pass')
 
             await set_advanced(False)
             for theme in ['light', 'dark']:
@@ -515,6 +648,10 @@ async def main():
             await expect(history_select).to_have_count(0)
             await expect(comparison).to_have_count(0)
             report['checks'].append('Clear also removes multi-model candidates and comparison history')
+            await page.reload(wait_until='networkidle')
+            await expect(page.get_by_role('heading', name='Start with the question.', exact=True)).to_be_visible()
+            await expect(history_select).to_have_count(0)
+            report['checks'].append('Cleared history stays cleared after reload' if PREVIEW_OWNER else 'Signed-out reload starts with no retained questions')
             assert not report['browserErrors'], report['browserErrors']
             assert not report['stubErrors'], report['stubErrors']
             report['passed'] = True
@@ -529,7 +666,7 @@ async def main():
             raise
         finally:
             report['requests'] = requests
-            (OUT / 'browser-report.json').write_text(json.dumps(report, indent=2))
+            (OUT / ('browser-report-preview-owner.json' if PREVIEW_OWNER else 'browser-report.json')).write_text(json.dumps(report, indent=2))
             await browser.close()
     print(json.dumps({'passed': report['passed'], 'checks': len(report['checks']), 'layouts': len(report['layouts']), 'liveModel': False}))
 

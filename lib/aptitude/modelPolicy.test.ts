@@ -4,10 +4,11 @@ import { aptitudeModel, configuredAptitudeComparisonModels, configuredAptitudeMo
 const env = { ANTHROPIC_API_KEY: 'test-anthropic-key', OPENAI_API_KEY: 'test-openai-key' }
 
 describe('explicit aptitude model profiles', () => {
-  it('preserves the existing defaults while challenger models are evaluated', () => {
-    expect(configuredAptitudeModels(env).map(model => model.id)).toEqual(['anthropic:claude-sonnet-4-5'])
-    expect(configuredAptitudeModels({ OPENAI_API_KEY: env.OPENAI_API_KEY }).map(model => model.id)).toEqual(['openai:gpt-4.1'])
-    expect(DEFAULT_APTITUDE_COMPARISON_MODELS).toEqual(['anthropic:claude-sonnet-4-5', 'openai:gpt-4.1'])
+  it('defaults to the requested Claude/OpenAI pair while single mode uses one configured provider', () => {
+    expect(configuredAptitudeModels(env).map(model => model.id)).toEqual(['openai:gpt-6.2-sol'])
+    expect(configuredAptitudeModels({ OPENAI_API_KEY: env.OPENAI_API_KEY }).map(model => model.id)).toEqual(['openai:gpt-6.2-sol'])
+    expect(configuredAptitudeModels({ ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY }).map(model => model.id)).toEqual(['anthropic:claude-sonnet-5-5'])
+    expect(DEFAULT_APTITUDE_COMPARISON_MODELS).toEqual(['anthropic:claude-sonnet-5-5', 'openai:gpt-6.2-sol'])
     expect(configuredAptitudeComparisonModels(env).map(model => model.id)).toEqual(DEFAULT_APTITUDE_COMPARISON_MODELS)
   })
   it('allows explicit challenger selection without adding implicit fallback calls', () => {

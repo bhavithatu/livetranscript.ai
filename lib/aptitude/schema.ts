@@ -19,9 +19,9 @@ export const APTITUDE_CATEGORY_LABELS: Record<AptitudeCategory, string> = {
 // Includes data-URL overhead; leaves headroom below hosted function body limits.
 export const MAX_APTITUDE_IMAGE_CHARS = 3_500_000
 export const MAX_APTITUDE_BODY_BYTES = MAX_APTITUDE_IMAGE_CHARS + 2_000
-// Older open tabs strictly reject added answer fields and must refresh before a paid call.
+// Older grid-v1 tabs receive JSON with newly added answer fields omitted by the route.
 export const APTITUDE_CONTRACT_HEADER = 'x-lt-aptitude-contract'
-export const APTITUDE_CONTRACT_VERSION = 'grid-v1'
+export const APTITUDE_CONTRACT_VERSION = 'confidence-v2'
 export type AptitudeRequest = {
   captureId: string
   questionVersion: number
@@ -55,6 +55,9 @@ export type AptitudeAnswer = {
   summary: string
   workedExplanation: string[]
   evidence: string[]
+  /** Uncalibrated model self-estimate, never a verified probability of correctness.
+   * Missing on older captures; null means the model could not meaningfully rate it. */
+  confidence?: number | null
   calculation: { expression: string; claimedValue: number; decimalPlaces: number | null } | null
   /** Present only for a next-value prediction using one of these exact, bounded numeric rules.
    * Optional on the wire so captures produced before this field remain readable. */
@@ -210,7 +213,12 @@ function parseGridInventory(value: unknown): AptitudeGridInventory | null {
 }
 function parseAnswer(value: unknown): AptitudeAnswer | null {
   if (value === null) return null
-  const item = object(value, 'Answer', ['selectedOptionIds', 'value', 'unit', 'summary', 'workedExplanation', 'evidence', 'calculation', 'numericPattern', 'gridInventory'], ['numericPattern', 'gridInventory'])
+  const item = object(value, 'Answer', ['selectedOptionIds', 'value', 'unit', 'summary', 'workedExplanation', 'evidence', 'confidence', 'calculation', 'numericPattern', 'gridInventory'], ['confidence', 'numericPattern', 'gridInventory'])
+  let confidence: number | null | undefined
+  if ('confidence' in item) {
+    confidence = item.confidence === null ? null : finiteNumber(item.confidence, 'model confidence')
+    if (confidence !== null && (!Number.isInteger(confidence) || confidence < 0 || confidence > 100)) return fail('Model confidence must be an integer from 0 to 100, or null')
+  }
   let calculation: AptitudeAnswer['calculation'] = null
   if (item.calculation !== null) {
     const calc = object(item.calculation, 'Calculation', ['expression', 'claimedValue', 'decimalPlaces'])
@@ -238,6 +246,7 @@ function parseAnswer(value: unknown): AptitudeAnswer | null {
   return { selectedOptionIds, value: nullableString(item.value, 'answer value', 500), unit: nullableString(item.unit, 'unit', 100),
     summary: string(item.summary, 'answer summary', 1_000, true), workedExplanation: strings(item.workedExplanation, 'worked explanation', 6, 2_000),
     evidence: strings(item.evidence, 'answer evidence', 12, 2_000), calculation,
+    ...('confidence' in item ? { confidence } : {}),
     ...('numericPattern' in item ? { numericPattern } : {}),
     ...('gridInventory' in item ? { gridInventory: parseGridInventory(item.gridInventory) } : {}) }
 }
@@ -274,27 +283,29 @@ function parseVerification(value: unknown): AptitudeVerification {
     outcome: member(check.outcome, ['passed', 'disagreed', 'not_run'], 'verification outcome'), notes: strings(check.notes, 'verification notes') }
 }
 
+export function parseAptitudeComparisonCandidate(value: unknown): AptitudeComparisonCandidate {
+  const candidate = object(value, 'Comparison candidate', ['modelId', 'model', 'provider', 'status', 'observation', 'verification', 'durationMs', 'error'])
+  const provider = member<'anthropic' | 'openai'>(candidate.provider, ['anthropic', 'openai'], 'comparison provider')
+  const modelId = string(candidate.modelId, 'comparison model ID', 200, true)
+  if (!modelId.startsWith(`${provider}:`) || !/^(?:anthropic|openai):[A-Za-z0-9._-]+$/.test(modelId)) return fail('Invalid comparison model ID')
+  const durationMs = finiteNumber(candidate.durationMs, 'comparison duration')
+  if (durationMs < 0 || durationMs > 3_600_000) return fail('Invalid comparison duration')
+  const parsed: AptitudeComparisonCandidate = { modelId, model: nullableString(candidate.model, 'comparison model', 200), provider,
+    status: member(candidate.status, ['complete', 'failed', 'timed_out'], 'comparison candidate status'),
+    observation: candidate.observation === null ? null : parseAptitudeObservation(candidate.observation),
+    verification: candidate.verification === null ? null : parseVerification(candidate.verification), durationMs,
+    error: nullableString(candidate.error, 'comparison error', 1_000) }
+  if (parsed.status === 'complete') {
+    if (!parsed.model?.trim() || !parsed.observation || !parsed.verification || parsed.error !== null) return fail('Invalid complete comparison candidate')
+    if (parsed.observation.status === 'solved' && parsed.verification.outcome === 'disagreed') return fail('A disagreed calculation cannot vote')
+  } else if (parsed.observation !== null || parsed.verification !== null || !parsed.error?.trim()) return fail('Invalid failed comparison candidate')
+  return parsed
+}
+
 export function parseAptitudeComparison(value: unknown): AptitudeComparison {
   const item = object(value, 'Comparison', ['decision', 'selectedModelId', 'agreementCount', 'notes', 'candidates'])
   if (!Array.isArray(item.candidates) || item.candidates.length < 2 || item.candidates.length > 3) return fail('Compare two or three distinct models')
-  const candidates = item.candidates.map(value => {
-    const candidate = object(value, 'Comparison candidate', ['modelId', 'model', 'provider', 'status', 'observation', 'verification', 'durationMs', 'error'])
-    const provider = member<'anthropic' | 'openai'>(candidate.provider, ['anthropic', 'openai'], 'comparison provider')
-    const modelId = string(candidate.modelId, 'comparison model ID', 200, true)
-    if (!modelId.startsWith(`${provider}:`) || !/^(?:anthropic|openai):[A-Za-z0-9._-]+$/.test(modelId)) return fail('Invalid comparison model ID')
-    const durationMs = finiteNumber(candidate.durationMs, 'comparison duration')
-    if (durationMs < 0 || durationMs > 3_600_000) return fail('Invalid comparison duration')
-    const parsed: AptitudeComparisonCandidate = { modelId, model: nullableString(candidate.model, 'comparison model', 200), provider,
-      status: member(candidate.status, ['complete', 'failed', 'timed_out'], 'comparison candidate status'),
-      observation: candidate.observation === null ? null : parseAptitudeObservation(candidate.observation),
-      verification: candidate.verification === null ? null : parseVerification(candidate.verification), durationMs,
-      error: nullableString(candidate.error, 'comparison error', 1_000) }
-    if (parsed.status === 'complete') {
-      if (!parsed.model?.trim() || !parsed.observation || !parsed.verification || parsed.error !== null) return fail('Invalid complete comparison candidate')
-      if (parsed.observation.status === 'solved' && parsed.verification.outcome === 'disagreed') return fail('A disagreed calculation cannot vote')
-    } else if (parsed.observation !== null || parsed.verification !== null || !parsed.error?.trim()) return fail('Invalid failed comparison candidate')
-    return parsed
-  })
+  const candidates = item.candidates.map(parseAptitudeComparisonCandidate)
   if (new Set(candidates.map(candidate => candidate.modelId)).size !== candidates.length) return fail('Comparison model IDs must be distinct')
   const agreementCount = finiteNumber(item.agreementCount, 'agreement count')
   if (!Number.isInteger(agreementCount) || agreementCount < 0 || agreementCount > candidates.length) return fail('Invalid agreement count')
@@ -364,6 +375,7 @@ const answerSchema = strictObject({
   summary: textSchema,
   workedExplanation: { ...list(textSchema), description: 'Normally 1–3 brief nonempty worked steps, never more than 6; at most 2000 characters per step.' },
   evidence: { ...list(textSchema), description: '1–12 nonempty literal observations, each at most 2000 characters. Group panel rows or choice inventories when needed, retaining all relevant visible features and locations.' },
+  confidence: { type: ['integer', 'null'], description: 'Your uncalibrated self-estimate from 0 to 100 that this selected answer is correct, considering image readability and the reasoning. It is not measured accuracy or independent verification. Use null if no meaningful estimate is possible.' },
   calculation: { anyOf: [strictObject({ expression: textSchema, claimedValue: { type: 'number' }, decimalPlaces: { type: ['integer', 'null'] } }), { type: 'null' }] },
   numericPattern: { anyOf: [strictObject({ observedValues: list({ type: 'number' }), rule: { type: 'string', enum: ['constant_difference', 'constant_second_difference', 'constant_ratio'] } }), { type: 'null' }] },
   gridInventory: { anyOf: [gridInventorySchema, { type: 'null' }], description: 'Required literal inventory for a fully readable regular-cell grid matrix with compatible grid options; null for non-grid questions. Unreadable or incomplete grids require needs_capture with answer null.' },

@@ -189,3 +189,37 @@ panels, the missing position and all four choice mappings directly against the
 original fixture. Incorrect or incomplete structured inventories still fail;
 equivalent English phrasing is no longer a release criterion. This change is
 evaluation infrastructure and does not establish general model accuracy.
+
+
+## Progressive Claude/OpenAI comparison and session recovery
+
+The November 18 follow-up changes the default comparison to Claude Sonnet 5.5
+and GPT-6.2 Sol at high reasoning effort. The UI puts both model answers first,
+with independent copy actions, response times and model-estimated confidence.
+Confidence is not calibrated accuracy and cannot override failed source or
+arithmetic checks. Matching answer values with unreconciled descriptions now
+receive a distinct evidence-review label instead of implying different answers.
+
+The same parallel provider calls now emit bounded, validated NDJSON completion
+events. The first completed answer is displayed while its peer runs. Capture,
+attempt, source and model identities reject stale/mismatched events; completed
+cards survive a disconnected stream. Copy state and keyboard focus survive the
+transition from a partial comparison to its final result. Known grid-v1 tabs
+retain JSON compatibility without the new confidence field, so the deployment
+does not require losing the old tab's captures to continue analyzing.
+
+The archive retains 100 questions, supports validated JSON export, and restores
+the same tab's data for the same authenticated owner from IndexedDB. Storage
+failures, seven-day expiry and retention limits are explicit. Interrupted calls
+are not automatically retried, and account switches hide/cancel prior work.
+See `aptitude-session-review.md` for the limits of reviewing the user's old
+forty-question Safari run; that run has not been accessed or graded.
+
+Before publication, the integrated full suite passed 1,530 tests in 181 files,
+plus 204 offline aptitude checks (two paid/preparation opt-ins skipped).
+TypeScript and the production build passed. Lint had no errors and the two
+existing unused-variable warnings in transcription recovery tests. Browser CI
+now runs both the signed-out production boundary and the existing development
+preview owner, including native IndexedDB reload/export/clear. Browser fixtures
+are explicitly stubs; real provider outcomes and latency must be recorded from
+the bounded deployment regression and live UI, not inferred from these tests.

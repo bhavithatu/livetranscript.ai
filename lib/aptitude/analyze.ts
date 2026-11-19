@@ -8,6 +8,7 @@ import { AptitudeServiceError, configuredAptitudeComparisonModels, configuredApt
 import { verifyAptitudeObservation } from './verify'
 import { validateAptitudeImage } from './image'
 import { comparisonReviewQuestion, selectAptitudeComparison } from './comparison'
+import type { AptitudeProgressUpdate } from './progress'
 
 export type AptitudeProviderReply = { text: string; model: string; inputTokens?: number; outputTokens?: number }
 export type AptitudeTransportInput = { candidate: AptitudeModel; request: AptitudeRequest; signal: AbortSignal; env: AptitudeEnvironment }
@@ -70,6 +71,8 @@ export type AnalyzeAptitudeOptions = {
   /** Dependency-injected deadline for tests; production stays bounded to 25 seconds. */
   timeoutMs?: number
   onAttempt?: (attempt: { requestedModel: string; model: string | null; provider: string; durationMs: number; inputTokens: number | null; outputTokens: number | null; completed: boolean }) => void
+  /** Fully validated candidate responses only; each can be displayed before slower models finish. */
+  onProgress?: (event: AptitudeProgressUpdate) => void
 }
 export async function analyzeAptitude(value: AptitudeRequest, parentSignal?: AbortSignal, options: AnalyzeAptitudeOptions = {}): Promise<AptitudeResult> {
   const started = performance.now()
@@ -86,8 +89,14 @@ export async function analyzeAptitude(value: AptitudeRequest, parentSignal?: Abo
   const onAbort = () => controller.abort()
   parentSignal?.addEventListener('abort', onAbort, { once: true })
   if (parentSignal?.aborted) controller.abort()
+  const publish = (event: AptitudeProgressUpdate) => {
+    if (parentSignal?.aborted || (controller.signal.aborted && !timedOut)) return
+    try { options.onProgress?.(event) } catch { /* An observer cannot change a verified candidate's outcome. */ }
+  }
   try {
     if (request.strategy === 'compare') {
+      publish({ type: 'start', captureId: request.captureId, questionVersion: request.questionVersion, sourceHash,
+        models: candidates.map(candidate => ({ modelId: candidate.id, model: candidate.model, provider: candidate.provider })) })
       // Each configured model gets one independent call with the same image. No fallback or shared drafts.
       const outcomes = await Promise.all(candidates.map(async (candidate): Promise<AptitudeComparisonCandidate> => {
         const attemptStarted = performance.now()
@@ -119,7 +128,10 @@ export async function analyzeAptitude(value: AptitudeRequest, parentSignal?: Abo
               durationMs: Math.round(performance.now()-attemptStarted), inputTokens: attemptReply?.inputTokens ?? null, outputTokens: attemptReply?.outputTokens ?? null, completed }) } catch { /* Metrics cannot change an analysis outcome. */ }
           }
         }
-      }))
+      }).map(pending => pending.then(candidate => {
+        publish({ type: 'candidate', captureId: request.captureId, questionVersion: request.questionVersion, sourceHash, candidate })
+        return candidate
+      })))
       // Timeouts retain candidate details. User cancellation invalidates the entire request and its late answers.
       if (parentSignal?.aborted || (controller.signal.aborted && !timedOut)) cancelled(false)
       const { comparison, selected } = selectAptitudeComparison(outcomes)
