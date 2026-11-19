@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { AptitudeResult } from '@/lib/aptitude/schema'
 import { APTITUDE_FIXTURES } from './fixtures'
 import { scoreAptitude } from './score'
+import { hasCorrectRotationGridInventory } from './gridEvidence'
 
 // Exact visible inventories from the owned fixture's live release run; no provider calls here.
 const explicitInventory = [
@@ -42,8 +43,77 @@ function result(evidence = explicitInventory): AptitudeResult {
   }
 }
 const review = (value: AptitudeResult) => scoreAptitude(fixture, value).evidenceReview
+const optionCells = ['r1c2,r1c3,r2c2', 'r2c2,r2c3,r3c3', 'r2c2,r3c1,r3c2', 'r1c1,r2c1,r2c2']
+const choiceReference = 'Choices A–D have the filled cells listed in question.options.'
+function withOptionInventory(value: AptitudeResult, qualifier = 'filled cells ') {
+  value.question!.options = optionCells.map((cells, index) => ({ id: 'ABCD'[index], label: 'ABCD'[index], text: `${qualifier}${cells}` }))
+  return value
+}
 
 describe('quarter-turn grid literal inventory rubric', () => {
+  it('validates a missing-panel location suffix as its own panel, not as a filled cell', () => {
+    const inventory = [...scopedInventory]
+    inventory[2] = inventory[2].replace("panel c3 is '?'", "panel c3 is the missing '?' at r3c3")
+    expect(review(result(inventory))?.reviewRequired).toBe(false)
+    for (const marker of ["is the missing '?' at r2c3", "is the missing '?' at r3c3 and r2c3", "has filled cells r3c3 and '?' at r3c3"]) {
+      const wrong = [...inventory]
+      wrong[2] = wrong[2].replace("is the missing '?' at r3c3", marker)
+      expect(review(result(wrong))?.reviewRequired).toBe(true)
+    }
+  })
+
+  it.each(['filled cells ', '', '3×3 grid with filled cells at '])
+    ('reads actual label-mapped option inventory with %j prefix, never a cross-reference alone', qualifier => {
+      // Authored option texts exercise the contract; these are not claimed to be
+      // the unlogged option texts from any particular live provider response.
+      const value = withOptionInventory(result([...explicitInventory.slice(0, 3), choiceReference]), qualifier)
+      expect(review(value)?.reviewRequired).toBe(false)
+      const noOptionCoordinates = result(value.answer!.evidence)
+      expect(review(noOptionCoordinates)?.reviewRequired).toBe(true)
+      value.question!.options[0].text = 'Panel A'
+      expect(review(value)?.reviewRequired).toBe(true)
+    })
+
+  it('requires positive filled-cell context for bare option coordinates and rejects opposite qualifiers', () => {
+    const bare = withOptionInventory(result(explicitInventory.slice(0, 3)), '')
+    expect(review(bare)?.reviewRequired).toBe(true)
+    bare.answer!.evidence.push(choiceReference)
+    expect(review(bare)?.reviewRequired).toBe(false)
+    for (const qualifier of ['empty cells', 'unfilled cells', 'not filled cells']) {
+      const wrong = withOptionInventory(result([...explicitInventory.slice(0, 3), choiceReference.replace('filled cells', qualifier)]))
+      expect(review(wrong)?.reviewRequired).toBe(true)
+    }
+  })
+
+  it.each([
+    'filled cells r1c2,r1c3',
+    'filled cells r1c2,r1c3,r1c3',
+    'filled cells r1c2,r1c3,r2c2,r3c3',
+    'filled cells r1c2,r1c3,r4c2',
+    'filled cells r1c1,r2c1,r2c2',
+    'empty cells r1c2,r1c3,r2c2',
+  ])('rejects malformed or contradictory option coordinates: %s', text => {
+    const value = withOptionInventory(result())
+    value.question!.options[0].text = text
+    expect(review(value)?.reviewRequired).toBe(true)
+  })
+
+  it('checks repeated facts in both sources instead of letting correct options override bad evidence', () => {
+    const value = withOptionInventory(result())
+    expect(review(value)?.reviewRequired).toBe(false)
+    value.answer!.evidence[3] = value.answer!.evidence[3].replace('A filled cells r1c2, r1c3, r2c2', 'A filled cells r1c1, r2c1, r2c2')
+    expect(review(value)?.reviewRequired).toBe(true)
+  })
+
+  it('rejects missing, duplicate and unknown structured option labels even with complete evidence', () => {
+    const options = withOptionInventory(result()).question!.options
+    expect(hasCorrectRotationGridInventory(explicitInventory, options)).toBe(true)
+    expect(hasCorrectRotationGridInventory(explicitInventory, options.slice(1))).toBe(false)
+    expect(hasCorrectRotationGridInventory(explicitInventory, options.map((option, index) => index === 0 ? { ...option, label: 'B' } : option))).toBe(false)
+    expect(hasCorrectRotationGridInventory(explicitInventory, options.map((option, index) => index === 0 ? { ...option, label: 'E' } : option))).toBe(false)
+    expect(hasCorrectRotationGridInventory(explicitInventory, options.map(option => ({ ...option, label: `(${option.label})` })))).toBe(true)
+  })
+
   it.each([
     { format: 'source-row and ordered-choice headings', inventory: sourceHeadingInventory },
     { format: 'row-scoped labels with a redundant panel coordinate', inventory: scopedAliasInventory },

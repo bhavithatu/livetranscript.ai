@@ -33,7 +33,7 @@ function reviewEvidence(fixture: AptitudeFixture, result: Pick<AptitudeResult, '
   if (!fixture.expected.evidenceChecks?.length && fixture.expected.calculationValue === undefined) return null
   const evidence = [result.question?.stem ?? '', ...(result.answer?.evidence ?? []), ...(result.answer?.workedExplanation ?? []), result.answer?.calculation?.expression ?? ''].join('\n')
   const checks = (fixture.expected.evidenceChecks ?? []).map(check => {
-    const inventory = check.gridRotationInventory ? hasCorrectRotationGridInventory(result.answer?.evidence ?? []) : null
+    const inventory = check.gridRotationInventory ? hasCorrectRotationGridInventory(result.answer?.evidence ?? [], result.question?.options ?? []) : null
     return {
       id: check.id, description: check.description,
       // Exact source/choice configurations establish the known rotation without an English keyword.

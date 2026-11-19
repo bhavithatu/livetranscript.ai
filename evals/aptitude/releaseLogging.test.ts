@@ -20,7 +20,7 @@ describe('bounded release diagnostics (no model calls)', () => {
     expect(scoreLines[0]).toContain('"passed":false')
   })
 
-  it.each(['evidence', 'explanation'] as const)('preserves every character of a maximum-size %s item including Unicode and escapes', section => {
+  it.each(['evidence', 'explanation', 'option'] as const)('preserves every character of a maximum-size %s item including Unicode and escapes', section => {
     const text = 'Filled “green” square 🟩; "label" \\ row\n'.repeat(100).slice(0, 2_000)
     const lines = aptitudeReleaseLogLines(section, context, { text })
     expect(lines.length).toBeGreaterThan(1)

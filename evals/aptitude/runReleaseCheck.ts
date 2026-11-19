@@ -28,6 +28,7 @@ type BriefCandidate = {
     calculation: { expression: string; claimedValue: number } | null;
     numericPattern: { observedValues: number[]; rule: string } | null } | null;
   observationStatus: string | null;
+  observedOptions: { label: string; text: string }[];
 }
 type Attempt = {
   fixtureId: string; expectedStatus: string; imageHash: string | null; durationMs: number | null;
@@ -38,6 +39,7 @@ function briefCandidate(candidate: AptitudeComparisonCandidate): BriefCandidate 
   const answer = observation?.answer
   return { modelId: candidate.modelId, model: candidate.model, status: candidate.status, durationMs: candidate.durationMs,
     observationStatus: observation?.status ?? null,
+    observedOptions: (observation?.question?.options ?? []).map(option => ({ label: option.label.slice(0, 80), text: option.text.slice(0, 2_000) })),
     answer: answer ? {
       labels: answer.selectedOptionIds.map(id => observation?.question?.options.find(option => option.id === id)?.label ?? '').map(label => label.slice(0, 80)),
       value: answer.value?.slice(0, 100) ?? null, summary: answer.summary.slice(0, 400),
@@ -163,6 +165,7 @@ it.skipIf(aptitudeReleaseEnvironment(process.env) === null)('blocks an enabled d
           // Separate events preserve each item and its model even when a later item is long.
           answer?.evidence.forEach((text, index) => log('evidence', { ...context, item: index + 1 }, { text }))
           answer?.workedExplanation.forEach((text, index) => log('explanation', { ...context, item: index + 1 }, { text }))
+          candidate?.observedOptions.forEach((option, index) => log('option', { ...context, item: index + 1 }, option))
         }
       }
     }
