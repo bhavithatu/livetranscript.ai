@@ -7,6 +7,9 @@
 src-tauri
 .firecrawl
 
-# QA fixtures and render output are never deployed as web assets
-qa
+# Only the owned assessment design preview is needed for explicit quality builds.
+qa/*
+!qa/aptitude/
+qa/aptitude/*
+!qa/aptitude/clean-preview/
 qa-results
