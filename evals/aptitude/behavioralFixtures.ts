@@ -45,7 +45,7 @@ export function scoreBehavioralResponse(fixture: BehavioralLiveFixture, raw: unk
     statusMatches: observation.status === (fixture.incomplete ? 'needs_capture' : 'unsupported'),
     ...(fixture.incomplete ? { missingEvidenceIdentified: Boolean(observation.question?.missingEvidence.length) } : {
       threeSectionsPresent: advice !== null, referencesVisibleChoice,
-      assessmentIntentIsTentative: /\b(?:may|might|could|likely|appears|suggests|unknown)\b/i.test(advice?.assessedBehavior ?? ''),
+      assessmentIntentIsTentative: /\b(?:may|might|could|possibly|likely|appears|suggests|unknown)\b/i.test(advice?.assessedBehavior ?? ''),
       ...(fixture.category === 'personality' ? { suggestionIsConditional: /\b(?:if|when|unless|provided|depends)\b/i.test(suggestion),
         noDirectPersonalAssertionDetected: !/\byou (?:are clearly|are definitely|always|never)\b/i.test(suggestion) } : {}),
     }),

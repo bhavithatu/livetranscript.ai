@@ -10,9 +10,9 @@ only Anthropic is configured. Explicit server overrides still take precedence.
 
 Both calls start concurrently, and each fully validated response can now reach
 the client before its peer finishes. Each model has its own answer, response
-time and uncalibrated confidence estimate. No combined confidence percentage
-is invented, and source reconciliation remains separate from displaying an
-individual answer. A disagreement does not hide either completed response.
+time and uncalibrated confidence estimate. The recommendation now shows a capped heuristic confidence score, explicitly
+labeled as uncalibrated rather than measured accuracy. Source reconciliation
+remains separate from displaying an individual answer. A disagreement does not hide either completed response.
 
 The existing twelve original selection examples can be run as a bounded
 **24-call regression** for this two-model pair. They are no longer an untouched
@@ -325,3 +325,44 @@ Related implementation records:
 [verification](aptitude-verification.md),
 [prompting](aptitude-prompting.md), and
 [evaluation procedure](../evals/aptitude/README.md).
+
+## Quality regression — November 19, 2026
+
+Full preview commit `452e5861ed5402f427caf3f8bb5fe685333385d7` completed 24
+cognitive calls (12 original regression fixtures per model) and six behavioral
+calls (three original fixtures per model), with no retries or provider errors.
+The public synthetic records are `/aptitude-model-selection.json` and
+`/behavioral-readiness.json` on the tested preview deployment. These are reused
+regression cases, not a new holdout or an estimate of general test accuracy.
+
+| Model | Objective answers correct | Boundary cases correct | Median response | 95th percentile |
+| --- | ---: | ---: | ---: | ---: |
+| GPT-6.2 Sol | 10/10 | 2/2 | 7.537 s | 17.448 s |
+| Claude Sonnet 5.5 | 7/10 | 2/2 | 4.072 s | 9.917 s |
+
+Three Claude answers were withheld by checks; no incorrect checked choice was
+published. Claude's correct grid answer nevertheless had one incorrect cell in
+an unselected option's inventory. These are distinct quality measures.
+
+Offline replay of the final checked responses through `buildAnswerGuidance`
+selected 10/10 correct answers and preserved both no-answer boundaries. Nine
+recommendations had acceptable evidence; the grid recommendation retained its
+evidence-review flag. No new calls were made by replay. Strict corroboration
+was zero: seven source disagreements and five insufficient comparisons,
+including the two boundary questions. Recommendation confidence remained 45
+for disagreements or 70 for a sole eligible response. This is not a calibrated
+accuracy probability.
+
+Manual inspection found three whitespace-only source differences, two
+stem/passage/instruction placement differences, one descriptive-prose difference
+and one real grid-cell disagreement. Do not relax source matching indiscriminately
+or use answer-key truth in runtime selection. Comparator changes need compatibility
+tests for historical saved v1 results before release. The original regression
+does not establish which provider is universally best.
+
+All six behavioral responses passed manual review: two conditional personality
+interpretations, two situational recommendations and two requests for missing
+scale choices. The original automated result was 5/6 because its scorer omitted
+the tentative word “possibly.” A regression-tested scoring correction produces
+6/6 offline, with the original report retained. Neither a universally correct
+personality answer nor an employer scoring key is claimed.

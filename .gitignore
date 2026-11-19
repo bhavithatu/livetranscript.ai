@@ -62,3 +62,5 @@ qa/refinement/generated-fonts.css
 /public/release-readiness.json
 /public/aptitude-readiness.json
 /public/aptitude-model-selection.json
+/public/behavioral-readiness.json
+/public/assessment-preview/

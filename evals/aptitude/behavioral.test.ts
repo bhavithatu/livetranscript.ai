@@ -35,3 +35,14 @@ it('renders a clipped scale with an explicit five-option requirement', () => {
   expect(behavioralFixtureSvg(BEHAVIORAL_LIVE_FIXTURES[2])).toContain('FIVE responses')
   expect(behavioralFixtureSvg(BEHAVIORAL_LIVE_FIXTURES[2])).toContain('y="432"')
 })
+
+it('recognizes possibly as tentative intent without accepting a definitive assessment claim', () => {
+  const base = observation()
+  const withIntent = (intent: string) => ({ ...base, message: base.message!.replace('This may explore collaboration.', intent) })
+  const tentative = scoreBehavioralResponse(BEHAVIORAL_LIVE_FIXTURES[0], withIntent('Possibly help-seeking and collaboration. This is an interpretation, not the employer scoring rubric.'))
+  expect(tentative.checks.assessmentIntentIsTentative).toBe(true)
+  expect(tentative.formatAndBoundaryPassed).toBe(true)
+  const definitive = scoreBehavioralResponse(BEHAVIORAL_LIVE_FIXTURES[0], withIntent('This definitively measures collaboration. The employer scores disagreement highest.'))
+  expect(definitive.checks.assessmentIntentIsTentative).toBe(false)
+  expect(definitive.formatAndBoundaryPassed).toBe(false)
+})

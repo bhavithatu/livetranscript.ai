@@ -386,3 +386,29 @@ screenshot capture subsequently timed out, so no new visual screenshot evidence
 is claimed. The Next production compilation/build passed before removing the
 action labels; final targeted tests, type checks and lint cover that removal.
 No production deployment or model configuration was changed.
+
+## Final quality review — November 19, 2026
+
+- Whole application suite: 1,609 tests passed across 187 files with two workers.
+- Full Next.js production build, TypeScript, and focused lint passed.
+- Final scoring correction: five behavioral tests passed; offline selection
+  replay and its safety regressions: four checks passed.
+- Full Vercel preview build passed, including 30 bounded real provider calls.
+- Desktop and 390px mobile design preview inspected in the user's Chrome;
+  mobile page width matched the viewport without horizontal overflow.
+- Behavioral provider attribution, partial/failure status visibility, text
+  contrast, and duplicate-model confidence caps were improved and tested.
+- The full preview app redirects to its own sign-in; its newly deployed
+  authenticated capture flow requires a fresh preview session. Previous Chrome
+  sharing success does not establish that this preview has been tested for
+  capture. Safari's earlier sharing limitation remains separately documented.
+- Production was not promoted. The preview's build snapshot reused existing
+  API access; the temporary OpenAI preview environment target was restored to
+  production-only after deployment creation. No key values were read.
+
+Tested preview: https://livetranscript-97hux7b0w-revanth-sai-reddy-venumbaka-s-projects.vercel.app
+
+Interactive design: `/assessment-preview/index.html`; full app:
+`/copilot?mode=aptitude`. The design uses explicitly labeled saved or authored
+examples and does not make model calls. See the model-selection document for
+fresh response results and their limitations.
