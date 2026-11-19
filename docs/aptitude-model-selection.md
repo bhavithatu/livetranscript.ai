@@ -5,8 +5,8 @@ Review date: **November 18, 2026**.
 This record separates published benchmark evidence from this application's
 original practice fixtures. Published results identify candidates to evaluate;
 they do not measure this application's screenshot capture, answer mapping, or
-time limit. The live migration pilot below is pending until its report is
-attached. No general aptitude-accuracy claim follows from this document.
+time limit. The live migration pilot below has a complete 36-call result record.
+No general aptitude-accuracy claim follows from this document.
 
 ## Candidate decision
 
@@ -190,15 +190,74 @@ untouched set is needed before making a general accuracy claim.
 
 ## Live pilot outcome
 
-**Pending. No live results are claimed in this section.**
+The pilot completed in production deployment `dpl_GbqBukVWPCeh1RnYiX9m1X2vUD1a`
+from code revision `aeef352e7813103127c2dab026be4542c0e5937b`. All **36 planned
+calls started and completed**. There were no provider errors, invalid schemas,
+source-image mismatches, retries or timeouts. The exact prompt hash was
+`73a65249e97f539e489d74029583126d9ea1624455befac31bbf4a20dcd9f46e`.
 
-Fill this section only after the actual provider run, retaining failed and
-aborted attempts. The completed record must link the report and frozen manifest,
-identify the code/prompt revision and exact model settings, list attempted calls,
-show answerable-question correctness separately from expected abstentions, and
-report observed timing and material errors. Record the resulting configuration
-decision separately from deployment verification. A passing offline scorer or
-mocked browser test must not be entered as live model evidence.
+[Complete structured log export, 36 attempts and frozen image manifest](aptitude-selection-results-2026-11-18.json).
+All candidate/score records and token totals were reconciled to the build
+summary. The authenticated report endpoint was not downloaded; the linked file
+explicitly identifies itself as an export from the structured build logs.
+
+| Model, high effort | Correct objective answers | Correct boundary handling | Unnecessary final abstentions | Median response | Slowest observed |
+| --- | --- | --- | --- | --- | --- |
+| GPT-6.2 Astra | 10/10 | 2/2 | 0 | 7.35 s | 15.61 s |
+| GPT-6.2 Sol | 10/10 | 2/2 | 0 | 6.86 s | 19.41 s |
+| Claude Sonnet 5.5 | 7/10 | 2/2 | 3 | 3.97 s | 11.34 s |
+
+Every model correctly transcribed the grid-combination inventory against the
+authored coordinates. No supported evidence checks were flagged, but those
+checks do not independently verify every observation or explanation. Durations
+measure application analysis calls during this run, not browser capture time.
+The sample is too small to claim a stable P95; the maximum is reported instead.
+
+Sonnet's weighted-price, relative-chart and shape-value answers were withheld
+by the application verifier. Raw schema diagnostics contain answer evidence and
+worked steps, showing that Sonnet initially supplied a schema-valid solved
+response. The frozen report does not retain its pre-verification answer,
+calculation or exact verification notes. These are therefore **app-level
+abstentions after verification**, not proven raw-model wrong answers. Neither
+the prompt nor scoring rules were changed after seeing these results.
+
+**Production decision:** use `openai:gpt-6.2-astra` for single-model analysis and
+`openai:gpt-6.2-astra,openai:gpt-6.2-sol` for the optional comparison. Preserve
+high effort, 6,000 output tokens, the 25-second deadline, and zero SDK retries.
+The pilot does not establish an accuracy difference between Astra and Sol.
+Astra is the quality-oriented choice supported by the independent benchmarks;
+Sol supplies a capable, cheaper comparison. Related models can share mistakes.
+
+At the standard uncached rates on the official
+[Astra](https://developers.openai.com/api/docs/models/gpt-6.2-astra) and
+[Sol](https://developers.openai.com/api/docs/models/gpt-6.2-sol) model pages,
+Astra's input/output rates are $8/$40 per million tokens and Sol's are $2/$10.
+Applying those rates to the recorded totals gives approximately $0.58 for
+Astra's twelve calls and $0.16 for Sol's. These are uncached standard-rate
+estimates, not billing records; cache behavior, tiers and image billing can
+change the charge. Both models' observed accuracy was identical on this pilot.
+
+The prior-model production regression gate also passed all six objective
+candidate checks and two cropped-image checks after the prompt change. Its
+strict comparison selector withheld all three combined objective selections;
+passing individual candidates does not imply a combined answer was selected.
+The first selected-model deployment, `dpl_HvpqZRpSagdH9sm2vipmSasf4YCr`, was
+blocked despite all six objective answers and both boundary outcomes being
+correct. The legacy star-evidence matcher accepted `4 points` but rejected
+`4 outer points` and `four outer tips`. The complete evidence correctly counted
+four, five and seven outer points. This is a confirmed wording-matcher false
+positive, separate from model correctness. A narrow matcher correction and
+positive/negative regression tests preserve the visual evidence requirement;
+the gate is not disabled and the original failed deployment remains recorded.
+
+The corrected selected-model deployment must separately pass that gate and a
+live app check before deployment verification is claimed. The one-time selection flag
+was disabled after the pilot deployment captured its configuration, so future
+builds do not repeat these 36 paid calls automatically.
+
+These twelve cases have now informed model selection and are no longer an
+untouched holdout. A larger separately authored set remains necessary before
+claiming broad aptitude accuracy.
 
 Related implementation records:
 [Aptitude mode](aptitude-mode.md),

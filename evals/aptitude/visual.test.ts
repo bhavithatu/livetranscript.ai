@@ -102,6 +102,67 @@ describe('visual evidence review and answer scoring', () => {
     expect(aggregateAptitudeAttempts([{ expectedStatus: 'solved', outcome: 'complete', score, comparisonScore: null, durationMs: 1 }])).toMatchObject({ endToEndCorrect: 1, evidenceReviewed: 1, evidenceReviewFlagged: 1 })
   })
 
+  it.each([
+    ['numeric outer points', [
+      'The left star has 4 outer points, with 28 printed below it.',
+      'The middle star has 5 outer points, with 35 printed below it.',
+      'The right star has 7 outer points: one at the top, two upper diagonals, two side points and two lower diagonals. A question mark is printed below it.',
+    ]],
+    ['written outer tips', [
+      'The left star has four outer tips and 28 printed below it.',
+      'The middle star has five outer tips and 35 printed below it.',
+      'The right star has seven outer tips and a question mark below it.',
+    ]],
+  ])('accepts the complete observed star inventory expressed as %s', (_description, evidence) => {
+    const value = starResult()
+    value.answer!.evidence = evidence
+    value.answer!.workedExplanation = ['28 / 4 = 7 and 35 / 5 = 7, so the missing value is 7 * 7 = 49.']
+    expect(scoreAptitude(fixture('visual-star-points'), value)).toMatchObject({
+      answerCorrect: true, evidenceReview: { reviewRequired: false, calculationMatchesExpected: true,
+        checks: [{ id: 'counts-points-not-stars', passed: true }] },
+    })
+  })
+
+  it.each([
+    'The stars have 4 outer points and 5 outer points; the right count is not given.',
+    'The stars have 4 outer points and 7 outer points; the middle count is not given.',
+    'The stars have 5 outer points and 7 outer points; the left count is not given.',
+    'The stars have 14 outer points, 15 outer points and 17 outer points.',
+    'The description is 4-pointless, 5-pointless and 7-pointless.',
+    'The stars have 4 outer points, 5 outer points and 6 outer points.',
+  ])('requires all three exact point counts in the evidence: %s', evidence => {
+    const value = starResult()
+    value.answer!.evidence = [evidence]
+    value.answer!.workedExplanation = ['The proposed value is 49.']
+    expect(scoreAptitude(fixture('visual-star-points'), value)).toMatchObject({
+      answerCorrect: true, evidenceReview: { reviewRequired: true, calculationMatchesExpected: true,
+        checks: [{ id: 'counts-points-not-stars', passed: false }] },
+    })
+  })
+
+  it.each([
+    'The right star has 6 outer points.',
+    'The right star has six outer tips.',
+    'The right shape is a six-pointed star.',
+    'There are four stars, then five stars, then seven stars.',
+  ])('rejects contradictory counts even alongside the correct point inventory: %s', contradiction => {
+    const value = starResult()
+    value.answer!.evidence.push(contradiction)
+    expect(scoreAptitude(fixture('visual-star-points'), value)).toMatchObject({
+      answerCorrect: true, evidenceReview: { reviewRequired: true,
+        checks: [{ id: 'counts-points-not-stars', passed: false }] },
+    })
+  })
+
+  it('accepts a correct seven-point count explicitly contrasted with an incorrect six-point reading', () => {
+    const value = starResult()
+    value.answer!.evidence.push('The right star has seven points, not six points.')
+    expect(scoreAptitude(fixture('visual-star-points'), value)).toMatchObject({
+      answerCorrect: true, evidenceReview: { reviewRequired: false,
+        checks: [{ id: 'counts-points-not-stars', passed: true }] },
+    })
+  })
+
   it('separates a correct selected answer from a contradictory worked explanation', () => {
     const value = incrementResult()
     const truth = fixture('visual-star-increasing-differences')

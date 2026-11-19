@@ -5,8 +5,14 @@ const starPoints = {
   optionTextByLabel: { A: '42', B: '45', C: '49', D: '56' }, calculationValue: 49,
   evidenceChecks: [{
     id: 'counts-points-not-stars', description: 'Counts four, five and seven points on three separate stars.',
-    allPatterns: ['(?:4|four)[ -]*(?:point|tip)', '(?:5|five)[ -]*(?:point|tip)', '(?:7|seven)[ -]*(?:point|tip)'],
-    forbiddenPatterns: ['(?:four|4) stars', '(?:five|5) stars', '(?:seven|7) stars'],
+    // "Four outer tips" and "4-pointed" describe the same count. Keep complete
+    // number/noun tokens so larger counts or unrelated words cannot satisfy it.
+    allPatterns: ['4|four', '5|five', '7|seven'].map(count => `\\b(?:${count})[ -]*(?:outer[ -]+)?(?:points?|pointed|tips?)\\b`),
+    forbiddenPatterns: [
+      '\\b(?:four|4|five|5|seven|7)[ -]+stars\\b',
+      '\\b(?:star|shape)\\s+(?:has|shows|with)\\s+(?:6|six)[ -]*(?:outer[ -]+)?(?:points?|tips?)\\b',
+      '\\b(?:star|shape)\\s+is\\s+a\\s+(?:6|six)[ -]*(?:outer[ -]+)?(?:point|pointed|tip|tipped)[ -]+star\\b',
+    ],
   }],
 } satisfies AptitudeFixture['expected']
 const starLines = ['Each star follows the same number rule.', 'What number belongs below the last star? Choose one.']
