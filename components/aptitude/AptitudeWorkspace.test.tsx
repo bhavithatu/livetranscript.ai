@@ -49,7 +49,7 @@ beforeEach(() => {
   mocks.screen.starting = false
   mocks.screen.error = null
   mocks.screen.sourceLabel = 'Practice window'
-  mocks.screen.start.mockImplementation(async () => { mocks.screen.sharing = true })
+  mocks.screen.start.mockImplementation(async () => { mocks.screen.sharing = true; return true })
   mocks.screen.stop.mockImplementation(() => { mocks.screen.sharing = false })
   mocks.screen.sampleFrame.mockReturnValue(frame(capture('screen-first')))
   mocks.watcher.status = 'watching'
@@ -93,6 +93,19 @@ async function manualAnswer() {
 }
 
 describe('aptitude workspace', () => {
+  it.each([null, 'The shared window did not provide a readable frame. Restore the window and share it again.'])('does not sample or add a stopped-source error when sharing setup fails: %s', async (failure) => {
+    mocks.screen.start.mockResolvedValue(false)
+    mocks.screen.error = failure
+    mocks.screen.sampleFrame.mockReturnValue({ kind: 'unavailable', capturedAt: Date.now(), reason: 'Screen sharing is stopped.' })
+    await renderWorkspace(false)
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Share screen' })) })
+    expect(mocks.screen.sampleFrame).not.toHaveBeenCalled()
+    expect(screen.queryByText('Screen sharing is stopped.')).toBeNull()
+    if (failure) expect(screen.getByText(failure)).toBeTruthy()
+    expect(fetch).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: 'Analyze this capture' })).toBeNull()
+  })
+
   it('opens setup for a direct practice link from the tools catalog', async () => {
     const previous = window.location.href
     window.history.replaceState(null, '', '#aptitude-practice')

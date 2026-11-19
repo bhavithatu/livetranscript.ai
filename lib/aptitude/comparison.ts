@@ -50,12 +50,21 @@ const eligible = (candidate: AptitudeComparisonCandidate) => candidate.status ==
   candidate.observation.answer.evidence.length > 0 && candidate.observation.answer.workedExplanation.length > 0 &&
   candidate.verification !== null && candidate.verification.outcome !== 'disagreed'
 const checked = (candidate: AptitudeComparisonCandidate) => candidate.verification?.method === 'arithmetic' && candidate.verification.outcome === 'passed' ? 1 : 0
+export { eligible as isEligibleAptitudeCandidate }
 const CAUTION = 'Model agreement is not calibrated correctness. Models can share the same transcription or reasoning mistake.'
 
 /** Presentation only: matching answer values never relax the source agreement gate. */
 export function comparisonAnswersMatch(candidates: AptitudeComparisonCandidate[]): boolean {
   const usable = candidates.filter(eligible)
   const keys = usable.map(answerKey)
+  return usable.length >= 2 && keys.every(key => key !== null) && new Set(keys).size === 1
+}
+
+/** Even repeated outputs from one model can contradict the captured source.
+ * This detects a conflict; it never establishes independent corroboration. */
+export function comparisonSourcesMatch(candidates: AptitudeComparisonCandidate[]): boolean {
+  const usable = candidates.filter(eligible)
+  const keys = usable.map(sourceKey)
   return usable.length >= 2 && keys.every(key => key !== null) && new Set(keys).size === 1
 }
 

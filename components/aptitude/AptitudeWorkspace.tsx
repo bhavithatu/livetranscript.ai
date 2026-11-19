@@ -159,8 +159,8 @@ export function AptitudeWorkspace({ archiveOwnerId }: { archiveOwnerId?: string 
     setScreenChanged(false)
     setInputError(null)
     setNotice(null)
-    await screen.start()
-    if (generation !== inputGeneration.current) return
+    const ready = await screen.start()
+    if (!ready || generation !== inputGeneration.current) return
     const sample = sampleScreenFrame({ crop: FULL_REGION, masks })
     if (sample.kind === 'available') {
       setPreview(createAptitudeCapture(sample))
@@ -286,12 +286,9 @@ export function AptitudeWorkspace({ archiveOwnerId }: { archiveOwnerId?: string 
   return <div className={styles.workspace}>
     <section className={styles.controls} aria-label="Aptitude capture controls">
       <div className={styles.controlHeading}>
-        <div><h2>One question. Clear reasoning.</h2><p>Share the question, include every choice, then analyze. Turn on automatic capture to follow new questions.</p></div>
+        <div><h2>Capture a question</h2><p>Cognitive answers and behavioral explanations. Include the question and every choice.</p></div>
         <span className={styles.badge}>{strategy === 'compare' ? 'Claude + OpenAI' : 'Single model'} · {category === 'auto' ? 'Auto-detect type' : APTITUDE_CATEGORY_LABELS[category]}</span>
       </div>
-      <p id={strategyDescriptionId} className={styles.modeDescription}>{strategy === 'compare'
-        ? 'Claude and OpenAI analyze the same capture in parallel. Each answer appears when ready; this uses both models’ credits.'
-        : 'One model analyzes the capture. Choose comparison in Advanced options for Claude and OpenAI together.'}</p>
       <div className={styles.buttonRow}>
         {!screen.sharing && <button type="button" className="btn-signal" onClick={() => screen.starting ? stopSharing() : void startSharing()} disabled={readingFile || !session.archiveReady}>
           <Monitor size={16} aria-hidden />{screen.starting ? 'Cancel sharing setup' : 'Share screen'}
@@ -309,13 +306,17 @@ export function AptitudeWorkspace({ archiveOwnerId }: { archiveOwnerId?: string 
         <input ref={fileInput} className={styles.hiddenInput} type="file" accept="image/png,image/jpeg,image/webp" aria-label="Upload aptitude screenshot" disabled={!session.archiveReady} onChange={(event) => void upload(event.target.files?.[0])} />
         {readingFile && <button type="button" className="btn-ghost" onClick={cancelInput}>Cancel image loading</button>}
       </div>
-      <div className={styles.captureStatus} role="status"><span className={`${styles.dot} ${screen.sharing ? styles.dotActive : ''}`} aria-hidden />{screen.starting ? 'Choose a source in the browser sharing dialog.' : readingFile ? 'Opening screenshot…' : watchMessage}{screen.sharing && sourceLabel ? ` · ${sourceLabel}` : ''}</div>
+      <div className={styles.captureStatus} role="status"><span className={`${styles.dot} ${screen.sharing ? styles.dotActive : ''}`} aria-hidden />{screen.starting ? screen.startupMessage : readingFile ? 'Opening screenshot…' : watchMessage}{screen.sharing && sourceLabel ? ` · ${sourceLabel}` : ''}</div>
       {!session.archiveReady && <p className={styles.muted} role="status">Restoring saved questions…</p>}
       {session.archiveNotice && <p className={styles.archiveNotice} role="status">{session.archiveNotice}</p>}
       {notice && <p className={styles.muted} role="status">{notice}</p>}
       {(screen.error || inputError) && <p className={styles.error} role="alert">{inputError || screen.error}</p>}
       <details ref={advancedOptions} className={styles.settings} id="aptitude-practice">
         <summary>Advanced options</summary>
+      <p id={strategyDescriptionId} className={styles.modeDescription}>{strategy === 'compare'
+        ? 'Claude and OpenAI analyze the same capture in parallel. Each answer appears when ready; this uses both models’ credits.'
+        : 'One model analyzes the capture. Choose comparison in Advanced options for Claude and OpenAI together.'}</p>
+
         <div className={styles.analysisOptions}>
           <label className={styles.category}>Question type
             <select aria-label="Question type" value={category} onChange={(event) => setCategory(event.target.value as AptitudeCategorySelection)}>
@@ -361,7 +362,7 @@ export function AptitudeWorkspace({ archiveOwnerId }: { archiveOwnerId?: string 
             </> : <>
               <button type="button" className="btn-signal" disabled={!session.archiveReady || readingFile || !livePreview && session.running?.capture.image === displayedCapture.image && session.running.strategy === strategy} onClick={analyzePreview}>Analyze this capture</button>
               <p className={styles.muted}>{livePreview ? awaitingCurrentCapture ? 'The question changed. Analyze now captures the current screen immediately.' : 'Analyze takes a fresh image of the shared question area.' : 'This exact image is analyzed. Include the full question and every choice.'}</p>
-              {previewSource === 'screen' && <p className={styles.previewTip}>Small diagram? Select question area, then enlarge to check it.</p>}
+              {previewSource === 'screen' && <p className={styles.previewTip}>Select the question and all choices, then enlarge to check them. Keep timers, navigation and the pointer outside this area to avoid extra automatic captures.</p>}
             </>}
           </> : <div className={styles.emptyPreview}><Camera size={28} aria-hidden /><p>Share a screen or upload a screenshot.</p><span>Preview the exact question before sending it.</span></div>}
         </section>

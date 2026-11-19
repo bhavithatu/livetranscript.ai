@@ -104,11 +104,48 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('screen media ownership', () => {
+  it('explains a stalled source picker without cancelling a late choice or making a second permission request', async () => {
+    vi.useFakeTimers()
+    const permission = deferred<MediaStream>()
+    getDisplayMedia.mockReturnValue(permission.promise)
+    const { result } = renderHook(() => useScreenStream({ preferNativeResolution: true }))
+    let pending!: Promise<boolean>
+    act(() => { pending = result.current.start() })
+    expect(result.current.startupMessage).toMatch(/Choose a source/)
+    act(() => { vi.advanceTimersByTime(15_000) })
+    expect(result.current.startupMessage).toMatch(/Still waiting for the browser/)
+    expect(result.current.starting).toBe(true)
+    expect(encoded).toHaveLength(0)
+    expect(getDisplayMedia).toHaveBeenCalledOnce()
+    await act(async () => { permission.resolve(stream(new Track())); await pending })
+    expect(await pending).toBe(true)
+    expect(result.current.sharing).toBe(true)
+    expect(result.current.startupMessage).toBeNull()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('clears pending picker guidance on cancellation and retires a later grant', async () => {
+    vi.useFakeTimers()
+    const permission = deferred<MediaStream>()
+    const track = new Track()
+    getDisplayMedia.mockReturnValue(permission.promise)
+    const { result } = renderHook(() => useScreenStream())
+    let pending!: Promise<boolean>
+    act(() => { pending = result.current.start() })
+    act(() => { result.current.stop(); vi.advanceTimersByTime(20_000) })
+    expect(result.current.startupMessage).toBeNull()
+    expect(vi.getTimerCount()).toBe(0)
+    await act(async () => { permission.resolve(stream(track)); await pending })
+    expect(await pending).toBe(false)
+    expect(track.stop).toHaveBeenCalledOnce()
+    expect(result.current.sharing).toBe(false)
+  })
+
   it('requests source detail only for the Aptitude workflow while keeping other vision consumers unchanged', async () => {
     const track = new Track()
     getDisplayMedia.mockResolvedValue(stream(track))
     const regular = renderHook(() => useScreenStream())
-    await act(async () => regular.result.current.start())
+    await act(async () => { await regular.result.current.start() })
     expect(getDisplayMedia).toHaveBeenLastCalledWith({ video: true, audio: false })
     expect(track.contentHint).toBe('')
     regular.unmount()
@@ -116,10 +153,11 @@ describe('screen media ownership', () => {
     const detailedTrack = new Track()
     getDisplayMedia.mockResolvedValue(stream(detailedTrack))
     const detailed = renderHook(() => useScreenStream({ preferNativeResolution: true }))
-    await act(async () => detailed.result.current.start())
+    await act(async () => { await detailed.result.current.start() })
     expect(getDisplayMedia).toHaveBeenLastCalledWith({ video: {
       width: { ideal: 4096 },
       frameRate: { ideal: 5, max: 10 }, resizeMode: { ideal: 'none' },
+      cursor: { ideal: 'never' },
     }, audio: false })
     expect(detailedTrack.contentHint).toBe('text')
     expect(detailed.result.current.sharing).toBe(true)
@@ -133,7 +171,7 @@ describe('screen media ownership', () => {
     getDisplayMedia.mockResolvedValue(stream(track))
     videoReadyState = HTMLMediaElement.HAVE_METADATA
     const { result } = renderHook(() => useScreenStream({ preferNativeResolution: true }))
-    let pending!: Promise<void>
+    let pending!: Promise<boolean>
     await act(async () => { pending = result.current.start(); await Promise.resolve() })
     expect(result.current.starting).toBe(true)
     expect(result.current.sharing).toBe(false)
@@ -161,7 +199,7 @@ describe('screen media ownership', () => {
     // A stalled play promise must not leave the Share button starting forever.
     vi.mocked(HTMLMediaElement.prototype.play).mockReturnValue(new Promise(() => {}))
     const { result } = renderHook(() => useScreenStream({ preferNativeResolution: true }))
-    let pending!: Promise<void>
+    let pending!: Promise<boolean>
     await act(async () => { pending = result.current.start(); await Promise.resolve() })
     await act(async () => { vi.advanceTimersByTime(10_000); await pending })
     expect(result.current).toMatchObject({ sharing: false, starting: false, sourceLabel: null })
@@ -179,7 +217,7 @@ describe('screen media ownership', () => {
     const playing = deferred<void>()
     vi.mocked(HTMLMediaElement.prototype.play).mockReturnValue(playing.promise)
     const { result } = renderHook(() => useScreenStream())
-    let pending!: Promise<void>
+    let pending!: Promise<boolean>
     await act(async () => { pending = result.current.start(); await Promise.resolve() })
     const video = vi.mocked(HTMLMediaElement.prototype.play).mock.contexts[0] as HTMLVideoElement
     await act(async () => { result.current.stop(); await pending })
@@ -195,7 +233,7 @@ describe('screen media ownership', () => {
     getDisplayMedia.mockResolvedValue(stream(track))
     videoReadyState = HTMLMediaElement.HAVE_METADATA
     const { result } = renderHook(() => useScreenStream())
-    let pending!: Promise<void>
+    let pending!: Promise<boolean>
     await act(async () => { pending = result.current.start(); await Promise.resolve() })
     await act(async () => { track.end(); await pending })
     expect(result.current.sharing).toBe(false)
@@ -208,7 +246,7 @@ describe('screen media ownership', () => {
     const track = new Track()
     getDisplayMedia.mockReturnValue(permission.promise)
     const { result } = renderHook(() => useScreenStream())
-    let pending!: Promise<void>
+    let pending!: Promise<boolean>
     act(() => { pending = result.current.start(); void result.current.start() })
     expect(getDisplayMedia).toHaveBeenCalledTimes(1)
     expect(result.current.starting).toBe(true)
@@ -228,10 +266,10 @@ describe('screen media ownership', () => {
     replacement.label = 'Replacement tab'
     getDisplayMedia.mockReturnValueOnce(permission.promise).mockResolvedValueOnce(stream(replacement))
     const { result } = renderHook(() => useScreenStream())
-    let pending!: Promise<void>
+    let pending!: Promise<boolean>
     act(() => { pending = result.current.start() })
     act(() => result.current.stop())
-    await act(async () => result.current.start())
+    await act(async () => { await result.current.start() })
     await act(async () => { permission.resolve(stream(oldTrack)); await pending })
     expect(oldTrack.stop).toHaveBeenCalledTimes(1)
     expect(replacement.stop).not.toHaveBeenCalled()
@@ -245,7 +283,7 @@ describe('screen media ownership', () => {
     const track = new Track()
     getDisplayMedia.mockReturnValue(permission.promise)
     const { result, unmount } = renderHook(() => useScreenStream())
-    let pending!: Promise<void>
+    let pending!: Promise<boolean>
     act(() => { pending = result.current.start() })
     unmount()
     await act(async () => { permission.resolve(stream(track)); await pending })
@@ -259,7 +297,7 @@ describe('screen media ownership', () => {
     getDisplayMedia.mockResolvedValue(stream(track))
     vi.mocked(HTMLMediaElement.prototype.play).mockReturnValueOnce(playing.promise)
     const { result } = renderHook(() => useScreenStream())
-    let pending!: Promise<void>
+    let pending!: Promise<boolean>
     await act(async () => { pending = result.current.start(); await Promise.resolve() })
     act(() => result.current.stop())
     await act(async () => { playing.resolve(); await pending })
@@ -273,15 +311,15 @@ describe('screen media ownership', () => {
     const removed = new Track()
     getDisplayMedia.mockResolvedValueOnce(stream(ended)).mockResolvedValueOnce(stream(pageExit)).mockResolvedValueOnce(stream(removed))
     const { result, unmount } = renderHook(() => useScreenStream())
-    await act(async () => result.current.start())
+    await act(async () => { await result.current.start() })
     act(() => ended.end())
     expect(result.current.sharing).toBe(false)
     expect(ended.stop).toHaveBeenCalledTimes(1)
-    await act(async () => result.current.start())
+    await act(async () => { await result.current.start() })
     act(() => window.dispatchEvent(new Event('pagehide')))
     expect(pageExit.stop).toHaveBeenCalledTimes(1)
     expect(result.current.sharing).toBe(false)
-    await act(async () => result.current.start())
+    await act(async () => { await result.current.start() })
     unmount()
     expect(removed.stop).toHaveBeenCalledTimes(1)
   })
@@ -293,7 +331,7 @@ describe('independent aptitude screen samples', () => {
     track.getSettings.mockReturnValue({ displaySurface: 'window' })
     getDisplayMedia.mockResolvedValue(stream(track))
     const { result } = renderHook(() => useScreenStream({ preferNativeResolution: true }))
-    await act(async () => result.current.start())
+    await act(async () => { await result.current.start() })
     expect(result.current.sampleFrame().kind).toBe('available')
     const count = encoded.length
     act(() => track.setMuted(true))
@@ -318,7 +356,7 @@ describe('independent aptitude screen samples', () => {
     track.getSettings.mockReturnValue({ displaySurface: 'window', width: 640, height: 480 })
     getDisplayMedia.mockResolvedValue(stream(track))
     const { result } = renderHook(() => useScreenStream({ preferNativeResolution: true }))
-    await act(async () => result.current.start())
+    await act(async () => { await result.current.start() })
     expect(result.current.sampleFrame()).toMatchObject({ kind: 'available', width: 64, height: 32 })
     videoRaster = { width: 32, height: 64, pixels: new Uint8ClampedArray(32 * 64 * 4).fill(255) }
     paint(videoRaster, 16, 32, 20)
@@ -332,7 +370,7 @@ describe('independent aptitude screen samples', () => {
     videoRaster = { width: 3000, height: 60, pixels: new Uint8ClampedArray(3000 * 60 * 4).fill(255) }
     for (let y = 0; y < 60; y++) for (let x = 1000; x < 1100; x++) paint(videoRaster, x, y, 20)
     const { result } = renderHook(() => useScreenStream())
-    await act(async () => result.current.start())
+    await act(async () => { await result.current.start() })
     const observed = result.current.sampleFingerprint()
     expect(observed.kind).toBe('available')
     if (observed.kind !== 'available') throw new Error('Expected a local fingerprint')
@@ -350,7 +388,7 @@ describe('independent aptitude screen samples', () => {
 
   it('uses identical crop and exclusion coordinates for lightweight polling and full captures', async () => {
     const { result } = renderHook(() => useScreenStream())
-    await act(async () => result.current.start())
+    await act(async () => { await result.current.start() })
     const options = { crop: { x: 0.25, y: 0, width: 0.75, height: 1 }, masks: [{ x: 0.75, y: 0, width: 0.25, height: 0.25 }] }
     const observed = result.current.sampleFingerprint(options)
     const captured = result.current.sampleFrame(options)
@@ -374,7 +412,7 @@ describe('independent aptitude screen samples', () => {
     videoRaster.pixels.set([0, 150, 80, 255], (30 * 3000 + 2501) * 4)
     videoRaster.pixels.set([25, 25, 25, 255], (30 * 3000 + 2502) * 4)
     const { result } = renderHook(() => useScreenStream())
-    await act(async () => result.current.start())
+    await act(async () => { await result.current.start() })
     const captured = result.current.sampleFrame()
     if (captured.kind !== 'available') throw new Error('Expected a readable native-size capture')
     expect([captured.width, captured.height]).toEqual([3000, 60])
@@ -393,7 +431,7 @@ describe('independent aptitude screen samples', () => {
       return `data:${type};base64,${this.width > 2000 ? 'A'.repeat(MAX_APTITUDE_IMAGE_CHARS) : 'AAAA'}`
     })
     const { result } = renderHook(() => useScreenStream())
-    await act(async () => result.current.start())
+    await act(async () => { await result.current.start() })
     expect(result.current.sampleFrame().kind).toBe('unavailable')
     const preview = result.current.sampleFrame({ previewOnly: true })
     if (preview.kind !== 'available') throw new Error('Expected a local selection preview')
@@ -406,7 +444,7 @@ describe('independent aptitude screen samples', () => {
   it('returns repeatable manual captures without consuming the legacy difference gate', async () => {
     const { result } = renderHook(() => useScreenStream())
     expect(result.current.sampleFrame().kind).toBe('unavailable')
-    await act(async () => result.current.start())
+    await act(async () => { await result.current.start() })
     const first = result.current.sampleFrame()
     const second = result.current.sampleFrame()
     expect(first.kind).toBe('available')
@@ -423,7 +461,7 @@ describe('independent aptitude screen samples', () => {
 
   it('masks changing timer pixels in both the outgoing image and novelty detection', async () => {
     const { result } = renderHook(() => useScreenStream())
-    await act(async () => result.current.start())
+    await act(async () => { await result.current.start() })
     const options = { masks: [{ x: 0.75, y: 0, width: 0.25, height: 0.25 }] }
     const first = result.current.sampleFrame(options)
     for (let y = 0; y < 8; y++) for (let x = 48; x < 64; x++) paint(videoRaster, x, y, 100)
@@ -440,7 +478,7 @@ describe('independent aptitude screen samples', () => {
 
   it('applies full-source coordinates after crop and leaves unmasked question text intact', async () => {
     const { result } = renderHook(() => useScreenStream())
-    await act(async () => result.current.start())
+    await act(async () => { await result.current.start() })
     const current = result.current.sampleFrame({
       crop: { x: 0.25, y: 0.25, width: 0.5, height: 0.5 },
       masks: [{ x: 0.5, y: 0.25, width: 0.25, height: 0.25 }],
@@ -454,7 +492,7 @@ describe('independent aptitude screen samples', () => {
 
   it('refuses invalid areas and oversized payloads rather than sending the whole source', async () => {
     const { result } = renderHook(() => useScreenStream())
-    await act(async () => result.current.start())
+    await act(async () => { await result.current.start() })
     expect(result.current.sampleFrame({ crop: { x: 0, y: 0, width: 0, height: 1 } }).kind).toBe('unavailable')
     expect(result.current.sampleFrame({ masks: [{ x: 0, y: 0, width: 0, height: 1 }] }).kind).toBe('unavailable')
     expect(encoded).toHaveLength(0)

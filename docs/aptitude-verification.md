@@ -260,3 +260,129 @@ reproduced or its root cause conclusively diagnosed.
 The integrated follow-up suite passed **1,540 tests across 181 files** locally.
 TypeScript, edited-file ESLint and diff checks passed. Exact-head CI and the
 normal eight-call production gate still run on publication.
+
+## Native Mac verification — 2026-11-19
+
+The production `cadc730` build was tested through the native Safari UI using
+existing configured Claude Sonnet 5.5 and GPT-6.2 Sol access. Three original
+practice captures made six provider calls: both models answered two numerical
+questions correctly and both requested a complete capture when answer choices
+were missing. First usable answers appeared at 4.7 s and 4.2 s; complete paired
+responses took 7.5 s and 7.2 s. The missing-choice comparison completed in 3.1 s.
+This is a small integration check, not a representative accuracy benchmark.
+
+Both answerable comparisons retained the evidence-review label. The exported
+percentage-change result differed only in paragraph breaks in the stem and
+option-label decoration; the strict source gate still preserves literal stem
+text. No relaxed source matching was introduced by this follow-up.
+
+Native screenshot upload, progressive provider cards, session JSON export, and
+restoration of all three captures after a Safari reload were observed. The
+original assessment tab and its retained captures were preserved.
+
+Window sharing did not deliver a stream after permission/selection, and the
+screen-sharing attempt likewise remained pending. A separate local page using
+only `getDisplayMedia({video:true,audio:false})` and an attached video element
+also stayed pending before a source grant. This narrows the observed stall to
+source acquisition; it does not establish a Safari root cause or prove window
+compatibility. OS picker/permission inspection was unavailable through the
+current Computer Use access.
+
+This patch distinguishes waiting for browser selection from waiting for a decoded
+frame, shows recovery guidance after 15 seconds without cancelling a slow picker,
+and reports startup success to the workspace so cancellation/failure cannot add
+a misleading stopped-source preview error. Late grants still release their tracks;
+there is no automatic permission retry, source widening, or model request.
+
+Final local verification: 1,544 unit tests in 181 files passed, 204 offline
+aptitude checks passed (two opt-ins skipped), and Node 22 production build,
+TypeScript, edited-file ESLint and diff validation passed.
+
+A subsequent fully manual Safari attempt still remained pending. The same basic
+local diagnostic in Chrome returned a live, unmuted window track, decoded a
+1350 × 1602 first frame, and started playback. The selected window showed ChatGPT,
+not the original practice fixture; the diagnostic made no uploads and the stream
+was stopped. This verifies Chrome's window-rendering path, not an integrated
+LiveTranscript capture. The production Chrome workspace requires an existing-account
+sign-in before that final check. System Settings and Control Center inspection
+remains unavailable even after the user enabled Any App.
+
+## Integrated Chrome window test — 2026-11-19
+
+After the user signed in and explicitly shared the original practice window,
+production `cadc730` captured 2528 × 1608 video. Manual analysis returned B/25%
+from both Claude Sonnet 5.5 and GPT-6.2 Sol (first answer 4.607 s, total 7.626 s).
+Automatic capture of the worker question returned D/30 from both (4.106 s,
+7.262 s). A selected crop produced 1821 × 1062 images. The sequence
+8,12,18,26,? returned B/36 from OpenAI; Claude's arithmetic consistency check
+failed and its answer was withheld. The combined comparison correctly remained
+insufficient. Both providers requested a complete capture for missing choices.
+
+The exported Chrome session contains 10 captures, seven complete and three
+interrupted, including duplicates and a return to question 1. These are not ten
+unique questions. Saved full-window images include pointer and toolbar changes.
+A pixel comparison of cropped captures 8 and 9 found 354 pixels differing by at
+least 20 in one RGB channel, solely inside x=927–949,y=963–997: the visible mouse
+pointer. Cropping had left navigation and the pointer in view.
+
+A local follow-up requests `cursor: { ideal: 'never' }` for detailed aptitude
+capture, using the optional W3C Screen Capture preference. Unsupported browsers
+may ignore it; no live verification of this new hint is claimed. UI guidance
+now explains excluding timers, navigation and the pointer while including all
+question content and choices. Detection sensitivity remains unchanged to retain
+changed-digit detection. Existing capture/workspace/detector regressions passed
+58 tests across three files; TypeScript, edited-file ESLint and diff checks
+passed. The earlier full suite and build predate this small follow-up.
+
+Automatic capture was paused. The UI export downloaded successfully, although
+the browser control connection detached while waiting for its completion event.
+The file was verified locally. The user confirmed sharing was stopped. No new
+keys were created. All live checks used production, and local follow-up patches
+have not been deployed. Safari source acquisition remains unresolved.
+
+## Best available answers and local difficulty — 2026-11-19
+
+The answer panel now derives one best available response from the validated
+candidate outputs, even if another model fails or abstains. Strict corroboration
+and its exported wire contract are unchanged. A disagreement can show a visibly
+labeled best-effort choice, capped at 45/100, with both provider results retained.
+Selection prefers corroboration, then passed arithmetic; indistinguishable
+candidates use a disclosed stable order, not the highest claimed confidence.
+No global model-quality ranking or accuracy improvement is asserted.
+
+Every completed panel displays a numeric heuristic confidence score. It uses the
+chosen model's estimate capped by available support: 95 for agreement, 80 for
+majority, 70 for one available answer, 45 for disagreement, and at most 65 while
+provisional. Older answers without an estimate use a disclosed 50-point fallback.
+No eligible answer yields zero evidence support and no invented choice. These
+scores are not calibrated probabilities. Provider confidence remains available
+on individual cards. The generic prompt now explicitly asks for confidence on
+solved answers, discourages reflexive 99/100 estimates and unnecessary abstention,
+and asks for an explicit sequence increment/calculation cross-check.
+
+Difficulty (Easy/Moderate/Hard/Not rated) is computed locally from existing
+question structure: reading load, constraints, multi-select, numerical patterns,
+and visual transformations. It is not a psychometric difficulty measure or a
+prediction of the user's ability. No provider request, tracking event or new
+persistent store is added. Private-workspace analytics filtering remains intact.
+The existing screenshot-to-provider data path is unchanged, and this cannot hide
+activity from the source website. At the user's explicit request, no "answer
+now", "review", or "skip for now" action labels are shown or exported.
+
+Validation includes 269 relevant unit/component/privacy checks, 216 offline
+aptitude checks (two optional provider/preparation checks skipped), and replay
+of ten completed saved live practice results. The replay promotes OpenAI's
+correct sequence answer when Claude failed validation, and retains no invented
+answer for missing choices. Twelve mixed original fixtures exercise local
+question-difficulty classification. These are offline tests and saved-response
+replays, not fresh provider inference. The changed prompt still needs a fresh
+live-model evaluation; usable credentials are only configured in the hosted
+project, not this checkout. No new keys were created or extracted.
+
+The real React recommendation component was rendered into an inspectable static
+preview, with copy interactions separately tested in the component suite. Chrome
+accessibility inspection confirmed its answer/confidence/difficulty content;
+screenshot capture subsequently timed out, so no new visual screenshot evidence
+is claimed. The Next production compilation/build passed before removing the
+action labels; final targeted tests, type checks and lint cover that removal.
+No production deployment or model configuration was changed.

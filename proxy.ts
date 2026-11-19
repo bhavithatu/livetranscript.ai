@@ -6,6 +6,8 @@ const isPublicRoute = createRouteMatcher([
   '/',
   '/api/health', // public release identity only; no credentials or user data
   '/release-readiness.json', // synthetic build metadata only; no user content or credentials
+  '/aptitude-model-selection.json', // original synthetic evaluation questions/results only
+  '/behavioral-readiness.json', // original synthetic behavioral evaluation only
   '/sign-in(.*)',
   '/sign-up(.*)',
   '/s/(.*)',

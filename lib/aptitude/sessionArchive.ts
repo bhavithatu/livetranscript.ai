@@ -1,6 +1,8 @@
 import { parseAptitudeProgress } from './progress'
 import { APTITUDE_CATEGORIES, parseAptitudeRequest, parseAptitudeResult } from './schema'
 import type { AptitudeSessionEntry } from './useAptitudeSession'
+import { buildAnswerGuidance, resultCandidates } from './guidance'
+import { behavioralObservations, explanationObservations } from './behavioral'
 
 export const APTITUDE_ARCHIVE_LIMIT = 100
 export const APTITUDE_ARCHIVE_TTL_MS = 7 * 24 * 60 * 60 * 1_000
@@ -336,6 +338,19 @@ export function buildAptitudeSessionExport(entries: readonly AptitudeSessionEntr
       medianCompletedAnalysisMs: median(parsed.flatMap(entry => entry.status === 'complete' && entry.elapsedMs !== null ? [entry.elapsedMs] : [])),
       note: 'Capture and analysis timestamps measure this app’s observed activity, not the time spent answering on another website.' },
     categories: APTITUDE_CATEGORIES.filter(category => parsed.some(entry => entry.result?.category === category)),
+    guidanceMeaning: 'Local heuristic recommendations and difficulty estimates. Confidence scores are not measured accuracy; no extra model call or tracking event is made.',
+    guidance: parsed.map(entry => {
+      const candidates = entry.result ? resultCandidates(entry.result) : entry.progress?.candidates ?? []
+      const behavioral = behavioralObservations(candidates)
+      const explanations = explanationObservations(candidates)
+      if (explanations) return { captureId: entry.id, label: behavioral ? 'Behavioral guidance' : 'Question response', confidenceScore: null,
+        confidenceBasis: 'This explanatory response has no checked answer or applicable correctness score.',
+        difficulty: { level: 'Not rated', reasons: ['No objective answer key is supplied.'] },
+        recommendedModelId: null, explanations: explanations.map(o => o.message).filter(Boolean) }
+      const guide = buildAnswerGuidance(candidates, entry.status === 'analyzing')
+      const { candidate, ...summary } = guide
+      return { captureId: entry.id, ...summary, recommendedModelId: candidate?.modelId ?? null }
+    }),
     entries: parsed,
   }
   return { filename: `livetranscript-aptitude-${exportedAt.replace(/[:.]/g, '-')}.json`, text: JSON.stringify(data, null, 2) }

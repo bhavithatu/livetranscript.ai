@@ -18,6 +18,7 @@ const DIFF_THUMB = 64 // luma thumbnail size for the perceptual diff
 const DIFF_THRESHOLD = 0.02 // mean-abs-diff (0..1) below which the screen is "unchanged"
 const APTITUDE_FINGERPRINT_EDGE = 512
 const FIRST_FRAME_TIMEOUT_MS = 10_000
+const SOURCE_PICKER_HELP_MS = 15_000
 
 type ScreenStreamOptions = { preferNativeResolution?: boolean }
 
@@ -32,13 +33,16 @@ type AptitudeRasterSample = (AvailableScreenFingerprint & { canvas: HTMLCanvasEl
 
 // Soft constraints apply after the user chooses the source. Unlike min/exact,
 // they do not reject smaller screens or narrow the browser's source picker.
-// resizeMode is in the Screen Capture specification, but not all DOM typings
+// resizeMode/cursor are in the Screen Capture specification, but not all DOM typings
 // or browsers expose it yet; unsupported hints are ignored by the browser.
-const DETAILED_SCREEN_CONSTRAINTS: MediaTrackConstraints & { resizeMode: ConstrainDOMString } = {
+const DETAILED_SCREEN_CONSTRAINTS: MediaTrackConstraints & { resizeMode: ConstrainDOMString; cursor: ConstrainDOMString } = {
   // One size preference lets WebKit retain a window's intrinsic aspect ratio.
   // Equal width/height preferences can introduce a square capture surface.
   width: { ideal: 4096 },
   frameRate: { ideal: 5, max: 10 }, resizeMode: { ideal: 'none' },
+  // A moving pointer can otherwise look like a new question. This is only a
+  // preference: retain capture support when the browser cannot hide it.
+  cursor: { ideal: 'never' },
 }
 
 type ScreenRun = {
@@ -48,9 +52,11 @@ type ScreenRun = {
   onMute: (() => void) | null
   onUnmute: (() => void) | null
   controller: AbortController
+  pickerTimer: ReturnType<typeof setTimeout> | null
 }
 
 function disposeRun(run: ScreenRun) {
+  if (run.pickerTimer !== null) clearTimeout(run.pickerTimer)
   run.controller.abort()
   run.stream?.getVideoTracks().forEach((track) => {
     if (run.onEnded) track.removeEventListener('ended', run.onEnded)
@@ -115,6 +121,7 @@ function playFirstFrame(video: HTMLVideoElement, track: MediaStreamTrack, signal
 export function useScreenStream({ preferNativeResolution = false }: ScreenStreamOptions = {}) {
   const [sharing, setSharing] = useState(false)
   const [starting, setStarting] = useState(false)
+  const [startupMessage, setStartupMessage] = useState<string | null>(null)
   const [sourceLabel, setSourceLabel] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -138,6 +145,7 @@ export function useScreenStream({ preferNativeResolution = false }: ScreenStream
     if (mountedRef.current) {
       setSharing(false)
       setStarting(false)
+      setStartupMessage(null)
       setSourceLabel(null)
     }
   }, [])
@@ -152,21 +160,33 @@ export function useScreenStream({ preferNativeResolution = false }: ScreenStream
     }
   }, [stop])
 
-  const start = useCallback(async () => {
-    if (!mountedRef.current || runRef.current) return
-    const run: ScreenRun = { stream: null, video: null, onEnded: null, onMute: null, onUnmute: null, controller: new AbortController() }
+  // Report readiness directly: React state captured by an awaiting caller is
+  // still from its old render, and a cancelled picker has no frame to sample.
+  const start = useCallback(async (): Promise<boolean> => {
+    if (!mountedRef.current || runRef.current) return false
+    const run: ScreenRun = { stream: null, video: null, onEnded: null, onMute: null, onUnmute: null, controller: new AbortController(), pickerTimer: null }
     runRef.current = run
     const current = () => mountedRef.current && runRef.current === run
     setError(null)
     setStarting(true)
+    setStartupMessage('Choose a source in the browser sharing dialog.')
+    // A browser may keep its picker promise pending even after the user thinks
+    // they confirmed a source. Explain this stage without cancelling a slow
+    // choice, retrying permission, or silently widening to an entire screen.
+    run.pickerTimer = setTimeout(() => {
+      if (current() && !run.stream) setStartupMessage('Still waiting for the browser to share a source. If you already confirmed a window, cancel sharing setup and try again, or upload a screenshot.')
+    }, SOURCE_PICKER_HELP_MS)
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: preferNativeResolution ? DETAILED_SCREEN_CONSTRAINTS : true, audio: false,
       })
       run.stream = stream
+      if (run.pickerTimer !== null) clearTimeout(run.pickerTimer)
+      run.pickerTimer = null
       // Stop while the browser picker is pending must retire a late grant,
       // without touching a replacement session that the user already started.
-      if (!current()) { disposeRun(run); return }
+      if (!current()) { disposeRun(run); return false }
+      setStartupMessage('Source selected. Waiting for a readable preview…')
       const track = stream.getVideoTracks()[0]
       if (!track) throw new Error('No screen video track')
       if (track.readyState === 'ended') throw new CaptureReadinessError('The selected source ended before sharing started. Restore its window and share it again.')
@@ -193,21 +213,24 @@ export function useScreenStream({ preferNativeResolution = false }: ScreenStream
       track.addEventListener('mute', run.onMute)
       track.addEventListener('unmute', run.onUnmute)
       await playFirstFrame(video, track, run.controller.signal)
-      if (!current()) { disposeRun(run); return }
+      if (!current()) { disposeRun(run); return false }
       videoRef.current = video
       // If the user stops sharing via the browser's own control, reflect it.
       setSharing(true)
       setStarting(false)
+      setStartupMessage(null)
       setError(null)
       setSourceLabel(track.label || `Shared ${sourceName(track)}`)
+      return true
     } catch (e) {
-      if (!current()) { disposeRun(run); return }
+      if (!current()) { disposeRun(run); return false }
       // User cancelled the picker, or permission denied — not a hard error.
       setError(e instanceof CaptureReadinessError ? e.message
         : e instanceof Error && e.name === 'NotAllowedError' ? run.stream ? 'The browser could not play the shared video. Restore its window and share it again.' : null
           : e instanceof Error && e.name === 'NotReadableError' ? 'The browser could not read the selected window or screen. Restore the window, check screen-recording permission, and share it again.'
             : 'Could not start screen sharing. Try selecting the window again, or choose Screen in the sharing dialog.')
       stop()
+      return false
     }
   }, [preferNativeResolution, stop])
 
@@ -375,5 +398,5 @@ export function useScreenStream({ preferNativeResolution = false }: ScreenStream
     return canvas.toDataURL('image/jpeg', 0.94)
   }, [])
 
-  return { sharing, starting, sourceLabel, error, start, stop, grabFrame, grabCodeFrame, sampleFrame, sampleFingerprint }
+  return { sharing, starting, startupMessage, sourceLabel, error, start, stop, grabFrame, grabCodeFrame, sampleFrame, sampleFingerprint }
 }

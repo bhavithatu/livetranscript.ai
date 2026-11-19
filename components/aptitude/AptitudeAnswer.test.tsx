@@ -50,7 +50,7 @@ describe('model comparison results', () => {
     expect(within(selected).getByText(/does not verify image reading, rule choice/)).toBeTruthy()
     expect(within(region).getByText(/Agreement does not prove the answer is correct/)).toBeTruthy()
     expect(screen.queryByText('Suggested answer')).toBeNull()
-    expect(within(region).getByText(/not measured accuracy/)).toBeTruthy()
+    expect(within(region).getAllByText(/not measured accuracy/).length).toBeGreaterThan(0)
   })
 
   it('keeps both individual answers and copy controls on disagreement without declaring a winner', async () => {
@@ -185,7 +185,7 @@ describe('model comparison results', () => {
     await act(async () => { finishWrite() })
   })
 
-  it.each(['needs_capture', 'ambiguous', 'unsupported'] as const)('does not show confidence or copying when a model returns %s', (status) => {
+  it.each(['needs_capture', 'ambiguous'] as const)('does not show confidence or copying when a model returns %s', (status) => {
     const result = comparisonFixture(base)
     const candidates = result.comparison!.candidates
     const response = { ...candidates[0], observation: { ...candidates[0].observation!, status, answer: null, message: 'Review the captured content.' } }

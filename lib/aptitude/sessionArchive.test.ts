@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { comparisonFixture } from '@/components/aptitude/comparisonTestFixtures'
 import { solvedObservation, TEST_IMAGE } from './testFixtures'
+import { BEHAVIORAL_PRACTICE } from './behavioralFixtures'
 import type { AptitudeSessionEntry } from './useAptitudeSession'
 import type { AptitudeArchiveStorage } from './sessionArchive'
 import {
@@ -279,4 +280,15 @@ describe('Aptitude session recovery and export', () => {
     expect(buildAptitudeSessionExport([entry], NOW).text).not.toContain('unintendedMetadata')
     expect(() => buildAptitudeSessionExport([entry, entry], NOW)).toThrow(/Duplicate/)
   })
+})
+
+it('exports behavioral guidance without a numeric correctness score or recommended model', () => {
+  const entry = question()
+  entry.result = { ...entry.result!, ...BEHAVIORAL_PRACTICE[0].observation,
+    verification: { method: 'none', outcome: 'not_run', notes: [] } }
+  const exported = JSON.parse(buildAptitudeSessionExport([entry], NOW).text)
+  expect(exported.guidance[0].confidenceScore).toBeNull()
+  expect(exported.guidance[0].recommendedModelId).toBeNull()
+  expect(exported.guidance[0].explanations).toEqual([BEHAVIORAL_PRACTICE[0].observation.message])
+  expect(exported.entries[0].result.answer).toBeNull()
 })

@@ -142,3 +142,25 @@ The release check sends four original PNG fixtures through `analyzeAptitude` and
 A release fails if any model errors, times out, returns an invalid result, gives a wrong objective answer, abstains on a clear objective fixture, triggers a bounded evidence-review flag, or fails to request another capture for the cropped options. The wrapper must not publish an answer for the cropped fixture. For correct objective candidates, conservative withholding by the comparison selector is allowed but reported separately; it is never counted as a resolved correct selection. These criteria are covered by offline tests, including two- and three-model budgets and sanitized provider-error output.
 
 The public `/aptitude-readiness.json` report includes the commit, configured/requested/returned model identities, fixture/prompt/schema/image hashes, planned and actual calls, per-candidate answer/evidence scores, available token counts, durations and selection outcomes. Only brief answers and evidence from these original fixtures appear; no user screenshots, credentials, headers, provider error bodies, or hidden reasoning are logged. Safe error codes distinguish unavailable models/credentials, deadlines, incomplete output and validation failure. Compact `[aptitude-release-fixture]` and `[aptitude-release-summary]` build logs retain diagnostic results when a failed build never becomes a public deployment. This four-fixture release check is a concrete regression test, not a general model-accuracy benchmark or a browser/device certification.
+
+## Local answer guidance replay
+
+The UI now separately recommends a best available eligible response without
+changing the strict comparison decision. Confidence is a capped heuristic score,
+not measured accuracy; difficulty is a local structure estimate. No action advice
+labels are shown. `guidance.test.ts` exercises twelve mixed original question
+structures without provider inference. Unit/component tests cover incomplete
+captures, failed arithmetic, provider timeouts, source disagreement and copying.
+
+An explicit local replay can read earlier exported practice sessions, render the
+actual React recommendation component and measure its computation cost:
+
+```sh
+APTITUDE_GUIDANCE_REPLAY_DIR=/absolute/path/to/practice-exports \
+  pnpm exec vitest run --config evals/aptitude/guidance-replay.config.ts
+```
+
+It expects `chrome-window-live-results.json` and `laptop-live-model-results.json`,
+never calls a provider, and writes its scoped report/preview under the supplied
+directory. This does not measure the updated prompt's accuracy. Fresh provider
+results are required before claiming the prompt improved model performance.

@@ -2,6 +2,8 @@ import type { AptitudeComparison as Comparison, AptitudeComparisonCandidate, Apt
 import { comparisonAnswersMatch } from '@/lib/aptitude/comparison'
 import { AnswerConfidence, CopyAnswer } from './AnswerActions'
 import { formatAptitudeOption } from './formatOption'
+import { AnswerGuidance } from './AnswerGuidance'
+import { explanationObservations } from '@/lib/aptitude/behavioral'
 import styles from './AptitudeWorkspace.module.css'
 
 const DECISIONS = {
@@ -41,7 +43,7 @@ function ModelCard({ candidate, selected }: { candidate: AptitudeComparisonCandi
   const provider = providerName(candidate.provider)
   const status = candidate.status === 'timed_out' ? 'Timed out' : candidate.status === 'failed' ? 'Failed'
     : observation?.status === 'needs_capture' ? 'Needs capture' : observation?.status === 'ambiguous' ? 'Uncertain'
-      : observation?.status === 'unsupported' ? 'Unsupported' : 'Answer ready'
+      : observation?.status === 'unsupported' ? 'Explanation ready' : 'Answer ready'
   return <article className={styles.modelCard} aria-label={candidate.modelId} data-selected={selected}>
     <header className={styles.modelHeader}>
       <div><h3>{provider}</h3><p className={styles.modelIdentity}>{modelName(candidate)}</p></div>
@@ -57,7 +59,7 @@ function ModelCard({ candidate, selected }: { candidate: AptitudeComparisonCandi
         <p className={styles.modelTiming}>Response time {duration(candidate.durationMs)}</p>
       </div>
     </> : <>
-      <p className={styles.noModelAnswer}>No answer supplied</p>
+      <p className={styles.noModelAnswer}>{observation?.status === 'unsupported' ? 'Question explanation' : 'No answer supplied'}</p>
       {observation?.message && <p className={styles.candidateMessage}>{observation.message}</p>}
       {candidate.error && <p className={styles.candidateError}>{candidate.error}</p>}
       <p className={styles.modelTiming}>Response time {duration(candidate.durationMs)}</p>
@@ -98,10 +100,26 @@ export function AptitudeComparison({ comparison, progress, active = false }: {
 }) {
   const models = comparison?.candidates ?? (progress?.models.length ? progress.models : INITIAL_MODELS)
   const candidates = comparison?.candidates ?? progress?.candidates ?? []
+  if (explanationObservations(candidates)) return <section className={styles.comparison} aria-label="Model explanations">
+    <AnswerGuidance candidates={candidates} active={active} />
+    <p className={styles.comparisonStatus} role="status">{candidates.filter(candidate => candidate.status === 'complete').length} of {models.length} models returned a response.{active ? ' More analysis is pending.' : ''}</p>
+    {candidates.filter(candidate => candidate.status !== 'complete').map(candidate => <p key={candidate.modelId} className={styles.candidateError}>{providerName(candidate.provider)} {candidate.status === 'timed_out' ? 'timed out' : 'could not finish'}. The available explanation is shown above.</p>)}
+    <details className={styles.checkDetails}>
+      <summary>Model response details</summary>
+      <div className={styles.modelGrid}>
+        {models.map(model => {
+          const candidate = candidates.find(item => item.modelId === model.modelId)
+          return candidate ? <ModelCard key={model.modelId} candidate={candidate} selected={false} />
+            : <PendingCard key={model.modelId} model={{ ...model, model: model.model ?? model.modelId }} active={active} />
+        })}
+      </div>
+    </details>
+  </section>
   const selected = comparison?.candidates.find(candidate => candidate.modelId === comparison.selectedModelId)
   const resolved = !!comparison && (comparison.decision === 'agreement' || comparison.decision === 'majority') && !!selected
   const sameAnswerNeedsReview = comparison?.decision === 'disagreement' && comparisonAnswersMatch(comparison.candidates)
   return <section className={styles.comparison} aria-label="Model comparison">
+    <AnswerGuidance candidates={candidates} active={active} />
     <div className={styles.modelGrid} aria-live="polite" aria-relevant="additions text">
       {models.map(model => {
         const candidate = candidates.find(item => item.modelId === model.modelId)

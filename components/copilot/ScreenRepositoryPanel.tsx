@@ -9,7 +9,7 @@ import { Markdown } from './Markdown'
 type ScreenRepo = ReturnType<typeof useScreenRepository>
 
 export function ScreenRepositoryControls({ repo, sharing, startSharing, question, onAnalyze }: {
-  repo: ScreenRepo; sharing: boolean; startSharing: () => Promise<void>
+  repo: ScreenRepo; sharing: boolean; startSharing: () => Promise<void | boolean>
   question: string; onAnalyze: (task: RepoTask) => void
 }) {
   const input = useRef<HTMLInputElement>(null)

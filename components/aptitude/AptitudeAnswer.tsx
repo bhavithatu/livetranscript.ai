@@ -5,8 +5,10 @@ import { useEffect, useState } from 'react'
 import type { AptitudeSessionEntry } from '@/lib/aptitude/useAptitudeSession'
 import { APTITUDE_CATEGORY_LABELS, type AptitudeResult, type AptitudeStrategy } from '@/lib/aptitude/schema'
 import { AptitudeComparison } from './AptitudeComparison'
-import { AnswerConfidence, CopyAnswer } from './AnswerActions'
 import { formatAptitudeOption } from './formatOption'
+import { AnswerGuidance } from './AnswerGuidance'
+import { resultCandidates } from '@/lib/aptitude/guidance'
+import { behavioralObservations, explanationObservations } from '@/lib/aptitude/behavioral'
 import styles from './AptitudeWorkspace.module.css'
 
 function Elapsed({ entry }: { entry: AptitudeSessionEntry }) {
@@ -32,28 +34,15 @@ export function aptitudeEntryStatus(entry: AptitudeSessionEntry) {
   if (entry.status === 'analyzing') return entry.strategy === 'compare' ? entry.progress?.candidates.length ? `${entry.progress.candidates.length} of ${entry.progress.models.length} responses ready` : 'Comparing models' : 'Analyzing'
   if (entry.status === 'cancelled') return 'Stopped'
   if (entry.status === 'error') return 'Could not finish'
+  if (entry.result && behavioralObservations(resultCandidates(entry.result))) return 'Behavioral guidance ready'
   if (entry.result?.comparison?.candidates.some(candidate => candidate.observation?.status === 'solved')) return 'Model answers ready'
-  return { solved: 'Answer ready', needs_capture: 'Needs another capture', ambiguous: 'Uncertain', unsupported: 'Unsupported question', error: 'Could not finish' }[entry.result?.status ?? 'error']
+  return { solved: 'Answer ready', needs_capture: 'Needs another capture', ambiguous: 'Uncertain', unsupported: 'Explanation ready', error: 'Could not finish' }[entry.result?.status ?? 'error']
 }
 
 function SuggestedAnswer({ result }: { result: AptitudeResult }) {
   const answer = result.answer
   if (!answer || result.status !== 'solved') return null
-  const choices = result.question?.options.filter((option) => answer.selectedOptionIds.includes(option.id)) ?? []
-  const answerText = choices.length > 0 ? choices.map(formatAptitudeOption).join(' · ')
-    : answer.value ? `${answer.value}${answer.unit ? ` ${answer.unit}` : ''}` : answer.summary
   return <>
-    <div className={styles.answerValue}>
-      <p className={styles.eyebrow}>Suggested answer</p>
-      <h3>{answerText}</h3>
-      <p>{answer.summary}</p>
-      <AnswerConfidence confidence={answer.confidence} />
-      <CopyAnswer text={answerText} />
-    </div>
-    <section className={styles.explanation} aria-label="Worked explanation">
-      <h3>How to solve it</h3>
-      <ol>{answer.workedExplanation.map((step, index) => <li key={index}>{step}</li>)}</ol>
-    </section>
     <section className={styles.verification} aria-label="Answer check">
       <h3>{result.verification.outcome === 'passed' ? 'Calculation matches' : result.verification.outcome === 'disagreed' ? 'Calculation needs review' : 'Answer review'}</h3>
       <p className={styles.muted}>{result.verification.method === 'arithmetic' ? 'Arithmetic only. This does not verify that the image was read correctly or that the chosen rule is valid.' : result.verification.method === 'source_review' ? 'Review against captured evidence' : 'No independent check was available.'}</p>
@@ -88,14 +77,14 @@ export function AptitudeAnswer({ entry, index, retryStrategy, onRetry, onStop, o
 
     {comparison || entry.strategy === 'compare' && (entry.status === 'analyzing' || entry.progress?.candidates.length)
       ? <AptitudeComparison key={`${entry.id}-${entry.questionVersion}`} comparison={comparison} progress={entry.progress} active={entry.status === 'analyzing'} />
-      : suggestedAnswer}
+      : <>{result && <AnswerGuidance key={`guidance-${entry.id}-${entry.questionVersion}`} candidates={resultCandidates(result)} single />} {suggestedAnswer}</>}
     {entry.status === 'analyzing' && <div className={entry.strategy === 'compare' ? styles.pendingCompact : styles.pending}>
       <p role="status">{entry.strategy === 'compare' ? 'Each model answer appears as soon as it is ready.' : 'Reading this capture and checking the answer…'}</p>
       <button type="button" className="btn-stop" onClick={onStop}>Stop analysis</button>
     </div>}
     {entry.status === 'cancelled' && <div className={styles.notice}><p>This analysis was stopped. The capture is available to retry.</p></div>}
     {entry.error && <div className={styles.error} role="alert">{entry.error}</div>}
-    {result?.message && result.status !== 'error' && !comparison && <div className={styles.notice}><p>{result.message}</p></div>}
+    {result?.message && result.status !== 'error' && !comparison && !explanationObservations(resultCandidates(result)) && <div className={styles.notice}><p>{result.message}</p></div>}
 
 
     {question?.missingEvidence.length ? <section className={styles.notice} aria-label="Missing question content"><h3>Include in your next capture</h3><ul>{question.missingEvidence.map((item, i) => <li key={i}>{item}</li>)}</ul></section> : null}

@@ -602,7 +602,7 @@ async def main():
             report['checks'].append('Session JSON download contains exact screenshots, both answers, confidence and timing without inventing an assessment score')
 
             if PREVIEW_OWNER:
-                await expect(page.get_by_text('Saved in this browser tab', exact=False)).to_be_visible()
+                await expect(page.get_by_role('region', name='Question history', exact=True).get_by_text('Saved in this browser tab', exact=False)).to_be_visible()
                 retained_ids = await history_options.evaluate_all('(items) => items.map(item => item.value)')
                 count = len(requests)
                 await page.reload(wait_until='networkidle')
@@ -616,7 +616,7 @@ async def main():
                 await expect(comparison.get_by_role('article')).to_have_count(2)
                 await expect(comparison.get_by_role('article', name='anthropic:claude-sonnet-4-5', exact=True).get_by_text('87%', exact=True)).to_be_visible()
                 await expect(comparison.get_by_role('article', name='openai:gpt-4.1', exact=True).get_by_text('91%', exact=True)).to_be_visible()
-                await expect(page.get_by_text('Saved in this browser tab', exact=False)).to_be_visible()
+                await expect(page.get_by_role('region', name='Question history', exact=True).get_by_text('Saved in this browser tab', exact=False)).to_be_visible()
                 await expect(saved_preview).to_have_attribute('src', sample)
                 assert len(requests) == count, 'Restoring a saved session must not send new provider requests'
                 report['persistenceTested'] = True
@@ -633,7 +633,19 @@ async def main():
                 for width in [375, 768, 1440]:
                     await page.set_viewport_size({'width': width, 'height': 1000})
                     await asyncio.sleep(.1)
-                    assert await page.evaluate('document.documentElement.scrollWidth <= innerWidth+1'), f'Horizontal overflow {theme}/{width}'
+                    fits_viewport = await page.evaluate('document.documentElement.scrollWidth <= innerWidth+1')
+                    if not fits_viewport:
+                        report['overflow'] = await page.evaluate('''() => ({
+                            viewportWidth: innerWidth, scrollWidth: document.documentElement.scrollWidth,
+                            elements: [...document.querySelectorAll('body *')].flatMap(element => {
+                                const bounds = element.getBoundingClientRect();
+                                if (!bounds.width || bounds.right <= innerWidth + 1) return [];
+                                return [{ tag: element.tagName, className: String(element.className),
+                                    role: element.getAttribute('role'), label: element.getAttribute('aria-label'),
+                                    left: Math.round(bounds.left), right: Math.round(bounds.right), width: Math.round(bounds.width) }];
+                            }).slice(-20)
+                        })''')
+                    assert fits_viewport, f'Horizontal overflow {theme}/{width}: {report.get("overflow")}'
                     await expect(page.get_by_role('button', name='Upload screenshot', exact=True)).to_be_visible()
                     report['layouts'].append({'theme': theme, 'width': width, 'passed': True})
                     if width in [375, 1440]:
