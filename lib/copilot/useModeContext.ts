@@ -1,5 +1,5 @@
 'use client'
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useStoredPreference } from '../browser/useStoredPreference'
 import { cosine } from './vector'
 import { mmrSelect } from './rerank'
@@ -97,9 +97,6 @@ export function useModeContext(mode: string) {
   const [modeError, setModeError] = useState<{ mode: string; message: string | null } | null>(null)
   const error = modeError?.mode === mode ? modeError.message : null
   const setError = useCallback((message: string | null) => setModeError({ mode, message }), [mode])
-  // Stories already USED this round — spent once, per the book's rule. Session-only
-  // (a ref, not persisted): a new interview round starts fresh. resetSpent() clears it.
-  const spentRef = useRef<Set<string>>(new Set())
 
   const setInstructions = useCallback(
     (text: string) => {
@@ -155,7 +152,6 @@ export function useModeContext(mode: string) {
           // A book replaces the prior book (re-upload = refresh), and also drops it in
           // as a doc entry so the UI shows "1 doc" + the count.
           const doc: ContextDoc = { id: crypto.randomUUID(), name: name || 'Story book', chunks: [] }
-          spentRef.current = new Set() // fresh book → nothing spent yet
           if (!setValue((current) => ({ ...current, docs: [...current.docs, doc], stories: newStories }))) {
             setError('Story book loaded, but too large to save — it won’t survive a page reload.')
           }
@@ -194,7 +190,6 @@ export function useModeContext(mode: string) {
   )
 
   const clear = useCallback(() => {
-    spentRef.current = new Set()
     const saved = clearStored()
     setError(saved ? null : 'Could not clear saved context — it may return after a page reload.')
   }, [clearStored, setError])
@@ -227,23 +222,17 @@ export function useModeContext(mode: string) {
     [docs, chunkCount],
   )
 
-  // Pick the best UNSPENT stories for a question and mark them spent — the book's
-  // core rule: a round needs 2 stories, each story spent once. Ranks all unspent
-  // stories by cosine of the question against their selector key, returns the top
-  // `n` (distinct), and records them as spent so the next question picks different
-  // ones. Returns [] if there's no story book or the bank is exhausted.
+  // Retrieval is read-only: a follow-up needs the same source facts, and cancelled
+  // preparation must not consume evidence. Session history guides story choice.
   const retrieveStories = useCallback(
     async (question: string, n = 2): Promise<{ title: string; fullText: string }[]> => {
       if (!stories.length || !question.trim()) return []
       try {
         const [q] = await embed([question])
         const ranked = stories
-          .filter((s) => !spentRef.current.has(s.id))
           .map((s) => ({ s, score: cosine(q, s.embedding) }))
           .sort((a, b) => b.score - a.score)
           .slice(0, n)
-        if (!ranked.length) return [] // every story already spent this round
-        for (const { s } of ranked) spentRef.current.add(s.id)
         return ranked.map(({ s }) => ({ title: s.title, fullText: s.fullText }))
       } catch {
         return []
@@ -252,10 +241,9 @@ export function useModeContext(mode: string) {
     [stories],
   )
 
-  // Start a fresh round — every story becomes available again.
-  const resetSpent = useCallback(() => {
-    spentRef.current = new Set()
-  }, [])
+  // Compatibility for existing round controls; source retrieval no longer spends
+  // stories. The behavioral session owns the actual conversation reset.
+  const resetSpent = useCallback(() => {}, [])
 
   return {
     docs,

@@ -52,6 +52,7 @@ export function useMeContext() {
 
   // Latest "what I said" for grounding an answer (null when empty/off).
   const getMeContext = useCallback((): string | null => bufferRef.current.trim() || null, [])
+  const clearContext = useCallback(() => { bufferRef.current = '' }, [])
 
-  return { listening, error, startListening, stopListening, getMeContext }
+  return { listening, error, startListening, stopListening, getMeContext, clearContext }
 }

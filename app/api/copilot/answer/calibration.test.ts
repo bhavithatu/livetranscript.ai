@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { NextRequest } from 'next/server'
+import { buildBehavioralSnapshot, createBehavioralRound, MAX_BEHAVIORAL_SNAPSHOT_CHARS } from '@/lib/behavioral/session'
 const mocks = vi.hoisted(() => ({ auth: vi.fn(), stream: vi.fn() }))
 vi.mock('@/lib/auth', () => ({ currentUserId: mocks.auth }))
 vi.mock('@/lib/log', () => ({ logError: vi.fn() }))
@@ -63,6 +64,39 @@ describe('shared live/mock answer calibration', () => {
   it('bounds the actual JSON body before parsing or model work', async () => {
     const response = await POST(request({ question: 'Test?', unused: 'x'.repeat(1_600_000) }))
     expect(response.status).toBe(413)
+    expect(mocks.stream).not.toHaveBeenCalled()
+  })
+
+  it('forwards the full validated behavioral round with provenance outside the generic context cutoff', async () => {
+    const round = createBehavioralRound({ company: 'Elm', role: 'Engineer', expectations: 'Explain careful measurement.' })
+    round.records = [
+      { id: 'source', kind: 'source_context', question: '', text: `${'s'.repeat(65_000)} ORIGINAL_SOURCE_END`, createdAt: 1, sourceLabel: 'Provided project notes' },
+      { id: 'draft', kind: 'ai_suggestion', question: 'What improved?', text: 'An unconfirmed 40% suggestion.', createdAt: 2, contextRevision: 0, contextProfile: { ...round.profile } },
+      ...Array.from({ length: 12 }, (_, index) => ({ id: `actual-${index}`, kind: 'confirmed_answer' as const,
+        question: `Question ${index}`, text: index === 0 ? 'I measured 14% against the original baseline.' : `My actual answer ${index}.`, createdAt: index + 3 })),
+    ]
+    const behavioralSession = buildBehavioralSnapshot(round)
+    const response = await POST(request({ mode: 'behavioral', question: 'How did you get 40%?', behavioralSession,
+      context: `${'g'.repeat(60_000)} GENERIC_OVERFLOW`, history: [{ role: 'assistant', content: 'Unlabeled invented experience' }] }))
+    expect(response.status).toBe(200)
+    const input = mocks.stream.mock.calls[0][0]
+    expect(input.context).toContain('ORIGINAL_SOURCE_END')
+    expect(input.context).toContain('I measured 14% against the original baseline.')
+    expect(input.context).toContain('My actual answer 11.')
+    expect(input.context).toContain('AI SUGGESTION — unconfirmed draft')
+    expect(input.context).toContain('USER-RECORDED ANSWER')
+    expect(input.context).toContain('"company":"Elm"')
+    expect(input.context).not.toContain('GENERIC_OVERFLOW')
+    expect(input.context).not.toContain('Unlabeled invented experience')
+    expect(input.history).toEqual([])
+  })
+
+  it('rejects malformed, oversized and wrongly routed behavioral snapshots before model work', async () => {
+    const valid = buildBehavioralSnapshot(createBehavioralRound())
+    const invalid = [null, {}, { ...valid, revision: -1 }, { ...valid, extra: 'unvalidated' },
+      { ...valid, records: [{ id: 'too-large', kind: 'source_context', question: '', text: 'x'.repeat(MAX_BEHAVIORAL_SNAPSHOT_CHARS + 1), createdAt: 1 }] }]
+    for (const behavioralSession of invalid) expect((await POST(request({ mode: 'behavioral', question: 'Q?', behavioralSession }))).status).toBe(400)
+    expect((await POST(request({ mode: 'general', question: 'Q?', behavioralSession: valid }))).status).toBe(400)
     expect(mocks.stream).not.toHaveBeenCalled()
   })
 })

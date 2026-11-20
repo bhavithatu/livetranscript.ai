@@ -8,6 +8,7 @@ import { costDims } from '@/lib/copilot/pricing'
 import { MAX_CALIBRATION } from '@/lib/interview/tuning'
 import { parseAnswerPreferences, withAnswerPreferences, type AnswerPreferences } from '@/lib/copilot/answerPreferences'
 import { readRepoJson, RepoRequestError } from '@/lib/repo/agentHttp'
+import { parseBehavioralSnapshot, renderBehavioralSnapshot, type BehavioralSnapshot } from '@/lib/behavioral/session'
 
 const MAX_TRANSCRIPT = 60_000
 const MAX_QUESTION = 2_000
@@ -27,11 +28,16 @@ export async function POST(req: NextRequest) {
   if ((origin && origin !== req.nextUrl.origin) || req.headers.get('sec-fetch-site') === 'cross-site') return Response.json({ error: 'Cross-origin request rejected' }, { status: 403 })
   let body: Record<string, unknown>
   let preferences: AnswerPreferences | undefined
+  let behavioralSession: BehavioralSnapshot | undefined
   try {
     body = await readRepoJson(req, 1_600_000)
     preferences = parseAnswerPreferences(body.preferences)
+    if ('behavioralSession' in body) {
+      if (body.mode !== 'behavioral') return Response.json({ error: 'Behavioral session context requires behavioral mode.' }, { status: 400 })
+      behavioralSession = parseBehavioralSnapshot(body.behavioralSession)
+    }
   } catch (error) {
-    return Response.json({ error: error instanceof RepoRequestError ? error.message : 'Invalid answer preferences' }, { status: error instanceof RepoRequestError ? error.status : 400 })
+    return Response.json({ error: error instanceof RepoRequestError ? error.message : 'Invalid answer preferences or behavioral session context.' }, { status: error instanceof RepoRequestError ? error.status : 400 })
   }
   const mode = typeof body.mode === 'string' ? body.mode : undefined
   if (mode === 'aptitude') return Response.json({ error: 'Use the Aptitude workspace to analyze a question image.', endpoint: '/api/aptitude/analyze' }, { status: 400, headers: { 'Cache-Control': 'no-store' } })
@@ -40,10 +46,14 @@ export async function POST(req: NextRequest) {
   const question = text(body.question, MAX_QUESTION).trim()
   if (!question) return Response.json({ error: 'Empty question' }, { status: 400 })
   const transcript = text(typeof body.transcript === 'string' ? body.transcript.slice(-MAX_TRANSCRIPT) : '', MAX_TRANSCRIPT)
-  const context = text(body.context, MAX_TRANSCRIPT)
+  // The validated round has its own evidence budget. Do not lose early confirmed
+  // answers by putting it through the generic context's 60k-character cutoff.
+  const context = [text(body.context, MAX_TRANSCRIPT), behavioralSession ? renderBehavioralSnapshot(behavioralSession) : ''].filter(Boolean).join('\n\n')
   const instructions = text(body.instructions, MAX_INSTRUCTIONS).trim()
   const calibration = text(body.calibration, MAX_CALIBRATION).trim()
-  const history: ChatTurn[] = Array.isArray(body.history) ? body.history
+  // The session already carries explicitly labeled, unadopted AI suggestions.
+  // A second unlabeled assistant history would conflict with that provenance.
+  const history: ChatTurn[] = !behavioralSession && Array.isArray(body.history) ? body.history
     .filter((t): t is ChatTurn => !!t && typeof t === 'object' && (t.role === 'user' || t.role === 'assistant') && typeof t.content === 'string')
     .slice(-MAX_HISTORY).map((t) => ({ role: t.role, content: clean(t.content, MAX_HISTORY_CONTENT) })) : []
   let model = modelForTier(image ? 'smart' : profile.tier)

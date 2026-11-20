@@ -3,6 +3,9 @@ import { useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { captureLatency } from './latency'
 import { CopilotCalibrationContext } from '@/lib/interview/TuningContext'
 import type { AnswerPreferences } from './answerPreferences'
+import { parseDraftStream } from './draftProtocol'
+import type { BehavioralSnapshot } from '@/lib/behavioral/session'
+import type { BehavioralSessionController } from '@/lib/behavioral/useBehavioralSession'
 
 export type CopilotTurn = { role: 'user' | 'assistant'; content: string; mode: string; requestId?: number }
 const STALL_TIMEOUT_MS = 20_000
@@ -10,18 +13,22 @@ const TOKEN_GAP_MS = 15_000
 
 // One transport for Live and Mock. Snapshot calibration and preferences per request.
 // Every stream owns its turn; stale chunks cannot append to a later question.
-export function useCopilot(getTranscript: () => string, preferences?: AnswerPreferences) {
+export function useCopilot(getTranscript: () => string, preferences?: AnswerPreferences, behavioralSession?: BehavioralSessionController) {
   const [turns, setTurns] = useState<CopilotTurn[]>([])
   const [streaming, setStreaming] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const turnsRef = useRef<CopilotTurn[]>([])
   const abortRef = useRef<AbortController | null>(null)
+  const activeModeRef = useRef<string | null>(null)
+  const lastModeRef = useRef<string | null>(null)
   const sequence = useRef(0)
   const mounted = useRef(true)
   const transcriptRef = useRef(getTranscript)
   transcriptRef.current = getTranscript
   const preferencesRef = useRef(preferences)
   preferencesRef.current = preferences
+  const behavioralRef = useRef(behavioralSession)
+  behavioralRef.current = behavioralSession
   const calibration = useContext(CopilotCalibrationContext)
   const calibrationRef = useRef(calibration)
   calibrationRef.current = calibration
@@ -34,6 +41,7 @@ export function useCopilot(getTranscript: () => string, preferences?: AnswerPref
   const cancel = useCallback(() => {
     const controller = abortRef.current
     abortRef.current = null
+    activeModeRef.current = null
     controller?.abort()
     runningCallback.current?.(false)
     runningCallback.current = undefined
@@ -54,15 +62,30 @@ export function useCopilot(getTranscript: () => string, preferences?: AnswerPref
   ): Promise<string | undefined> => {
     const q = question.trim()
     if (!q || !mounted.current) return
+    lastModeRef.current = mode
+    const transcript = transcriptRef.current()
+    const session = mode === 'behavioral' ? behavioralRef.current : undefined
+    let snapshot: BehavioralSnapshot | undefined
+    try {
+      if (session) {
+        session.observeContext(context ?? null, transcript)
+        snapshot = session.snapshot(q)
+      }
+    } catch (cause) {
+      stop()
+      setError(cause instanceof Error ? cause.message : 'Could not prepare the behavioral session. Review your context and try again.')
+      return
+    }
     cancel()
     const ctrl = new AbortController()
     abortRef.current = ctrl
+    activeModeRef.current = mode
     const requestId = ++sequence.current
-    const current = () => mounted.current && abortRef.current === ctrl
+    const ownsRequest = () => mounted.current && abortRef.current === ctrl
+    const current = () => ownsRequest() && (!snapshot || session!.isCurrent(snapshot))
     const settings = calibrationRef.current
-    const transcript = transcriptRef.current()
     const selectedPreferences = preferencesRef.current ? { ...preferencesRef.current } : undefined
-    const history = turnsRef.current.filter((turn) => turn.mode === mode && !!turn.content).slice(-8)
+    const history = snapshot ? [] : turnsRef.current.filter((turn) => turn.mode === mode && !!turn.content).slice(-8)
       .map(({ role, content }) => ({ role, content }))
     setError(null)
     updateTurns((previous) => [...previous.filter((turn) => turn.role !== 'assistant' || !!turn.content),
@@ -70,6 +93,12 @@ export function useCopilot(getTranscript: () => string, preferences?: AnswerPref
     setStreaming(true)
     runningCallback.current = settings?.onRunning
     settings?.onRunning?.(true)
+    const unsubscribe = snapshot ? session!.subscribeInvalidation(() => {
+      if (!ownsRequest() || session!.isCurrent(snapshot!)) return
+      stop()
+      setError('Your behavioral context changed. Ask again to use the updated facts.')
+    }) : undefined
+    if (unsubscribe) ctrl.signal.addEventListener('abort', unsubscribe, { once: true })
 
     let stalled = false
     let watchdog: ReturnType<typeof setTimeout> | undefined
@@ -98,6 +127,7 @@ export function useCopilot(getTranscript: () => string, preferences?: AnswerPref
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ question: q, transcript, history, mode, image: image ?? undefined,
           context: context ?? undefined, instructions: instructions ?? undefined,
+          behavioralSession: snapshot,
           calibration: settings?.instructions || undefined, preferences: selectedPreferences }),
         signal: ctrl.signal,
       })
@@ -113,6 +143,7 @@ export function useCopilot(getTranscript: () => string, preferences?: AnswerPref
         append(decoder.decode(value, { stream: true }))
       }
       if (!finalContent.trim()) throw new Error('The assistant returned an empty response — please retry.')
+      if (snapshot && (parseDraftStream(finalContent).phase === 'draft' || !parseDraftStream(finalContent).text.trim())) throw new Error('The assistant returned only an unfinished draft. Please retry.')
       captureLatency(mode, startedAt, firstTokenAt, finalContent)
     } catch (cause) {
       if (!current() || (ctrl.signal.aborted && !stalled)) return
@@ -121,6 +152,8 @@ export function useCopilot(getTranscript: () => string, preferences?: AnswerPref
       updateTurns((previous) => previous.filter((turn) => turn.requestId !== requestId || turn.role !== 'assistant' || !!turn.content))
     } finally {
       clearTimeout(watchdog)
+      unsubscribe?.()
+      if (unsubscribe) ctrl.signal.removeEventListener('abort', unsubscribe)
       ctrl.signal.removeEventListener('abort', cancelReader)
       void reader?.cancel().catch(() => {})
       reader?.releaseLock()
@@ -132,6 +165,8 @@ export function useCopilot(getTranscript: () => string, preferences?: AnswerPref
     }
     if (!current() || (ctrl.signal.aborted && !stalled)) return
     abortRef.current = null
+    activeModeRef.current = null
+    if (!failure && snapshot) session!.recordSuggestion(snapshot, q, parseDraftStream(finalContent).text)
     settings?.onResult?.({
       id: crypto.randomUUID(), question: q, mode, answer: finalContent, transcript,
       instructions: instructions ?? '', calibration: settings.instructions, revision: settings.revision,
@@ -141,12 +176,12 @@ export function useCopilot(getTranscript: () => string, preferences?: AnswerPref
     // Keep a partial response visible, but never return it as a complete answer to
     // the code executor or record it as a successful Mock observation.
     return failure ? undefined : finalContent
-  }, [cancel, updateTurns])
+  }, [cancel, stop, updateTurns])
 
-  const clear = useCallback(() => {
-    stop()
-    updateTurns(() => [])
-    setError(null)
+  const clear = useCallback((mode?: string) => {
+    if (mode === undefined || activeModeRef.current === mode) stop()
+    updateTurns(current => mode === undefined ? [] : current.filter(turn => turn.mode !== mode))
+    if (mode === undefined || lastModeRef.current === mode) setError(null)
   }, [stop, updateTurns])
   return { turns, streaming, error, ask, clear, stop }
 }

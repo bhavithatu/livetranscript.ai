@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 1,
+  "kind": "authored_behavioral_continuity_regression",
+  "createdAt": "2026-11-19T23:55:59.688Z",
+  "sourceCommit": "af29da7742b157795a05ec9154c7d4dc09d0a39b",
+  "model": "anthropic:claude-sonnet-5",
+  "transport": "streamAnswerDirect: production provider code, SDK retries disabled, no fallback, no speculative draft",
+  "independentHoldout": false,
+  "employerAnswerKeyIncluded": false,
+  "plan": {
+    "vendor": "anthropic",
+    "model": "claude-sonnet-5",
+    "modelId": "anthropic:claude-sonnet-5",
+    "fixtureIds": [
+      "negative-wording-and-new-labels"
+    ],
+    "plannedCalls": 1,
+    "maxCalls": 1
+  },
+  "summary": {
+    "plannedCalls": 1,
+    "callsStarted": 1,
+    "completed": 1,
+    "failed": 0,
+    "missingRows": 0,
+    "semanticReview": "pending",
+    "semanticPassRate": null,
+    "note": "Presence signals are review aids, not semantic correctness checks. Provider failures remain in the planned-call denominator. Every answer requires review against its supplied evidence."
+  },
+  "rows": [
+    {
+      "fixtureId": "negative-wording-and-new-labels",
+      "title": "A negative statement is interpreted using the current option mapping",
+      "question": "Current item: “I dislike relying on other people when the work is ambiguous.” Choose the response that is consistent with my recorded preference. Current options, in screen order: C = Agree; A = Disagree; D = Strongly agree; B = Strongly disagree.",
+      "status": "complete",
+      "answer": "A — Disagree.\n\nEvidence and consistency note: Your recorded preference is ordinary Agree on \"I ask colleagues for input when work is ambiguous\" — a moderate, positive preference for seeking input while staying responsible for your own decisions. The current item is reverse-worded (\"dislike relying on other people when ambiguous\"), so a consistent response is the moderate negation: ordinary Disagree. Strongly disagree would overstate the strength of your original answer — nothing in your evidence supports an extreme reaction to relying on others. So Disagree (A) is the matching intensity, not Strongly disagree (B).",
+      "failure": null,
+      "elapsedMs": 2641,
+      "evidence": {
+        "version": 1,
+        "roundId": "eval-negative-wording",
+        "revision": 5,
+        "profile": {
+          "company": "Example Systems (authored evaluation company)",
+          "role": "Software engineer",
+          "expectations": "The supplied job description values clear communication, measured results, and shared ownership.",
+          "selfDescription": "I usually seek colleagues’ input when a task is ambiguous while remaining responsible for my work.",
+          "questionStyle": "assessment"
+        },
+        "records": [
+          {
+            "id": "collaboration-actual",
+            "kind": "confirmed_answer",
+            "question": "Earlier item: “I ask colleagues for input when work is ambiguous.” Earlier options: A = Strongly disagree; B = Disagree; C = Strongly agree; D = Agree.",
+            "text": "D — Agree. I usually ask for input when I do not understand an ambiguous task; I still make and own my decisions.",
+            "createdAt": 1795089600000
+          }
+        ],
+        "coverage": {
+          "totalRecords": 1,
+          "includedRecords": 1,
+          "omittedRecords": 0,
+          "totalConfirmedRecords": 1,
+          "includedConfirmedRecords": 1,
+          "totalSourceRecords": 0,
+          "includedSourceRecords": 0,
+          "omittedSuggestionIds": [],
+          "complete": true
+        }
+      },
+      "signals": [
+        {
+          "label": "Mentions Disagree (inspect exact choice and strength)",
+          "present": true
+        },
+        {
+          "label": "Mentions option A (inspect that it maps to Disagree)",
+          "present": true
+        }
+      ],
+      "reviewCriteria": [
+        "Read “dislike” as a negative statement and use the current mapping, where A is Disagree.",
+        "Explain briefly that disagreement fits the earlier stated willingness to seek input.",
+        "Do not reuse the old D label, because D now means Strongly agree.",
+        "Do not turn an ordinary Agree preference into an extreme response without supporting personal evidence."
+      ],
+      "semanticReview": {
+        "status": "pending",
+        "grounded": null,
+        "consistent": null,
+        "notes": ""
+      }
+    }
+  ],
+  "assistantEvidenceReview": {
+    "reviewType": "Assistant review against authored source criteria; not an independent human rating",
+    "passed": 1,
+    "failed": 0,
+    "notAnAccuracyBenchmark": true,
+    "priorRun": "docs/behavioral-consistency-regression-2026-11-19.json",
+    "scope": "One explicitly budgeted rerun of the previously failing case after the response-strength prompt change. The other five cases were not rerun.",
+    "rows": [
+      {
+        "fixtureId": "negative-wording-and-new-labels",
+        "grounded": true,
+        "consistent": true,
+        "result": "pass",
+        "notes": "Chose A — Disagree using the current option mapping, preserved the ordinary strength of the earlier Agree response, and explicitly rejected Strongly disagree as unsupported."
+      }
+    ]
+  }
+}

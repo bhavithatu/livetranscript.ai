@@ -5,11 +5,17 @@ vi.mock('openai', () => ({ default: class { chat = { completions: { create: mock
 vi.mock('@anthropic-ai/sdk', () => ({ default: class {} }))
 vi.mock('./modes', () => ({ vendorForModel: () => 'openai', fastFallbackModel: () => 'test', fallbackChain: () => [] }))
 vi.mock('@/lib/log', () => ({ logError: vi.fn() }))
-import { streamAnswer, type AnswerParams } from './providers'
+import { streamAnswer, streamAnswerDirect, type AnswerParams } from './providers'
 const params: AnswerParams = { model: 'test', system: 'Grounded', transcript: '', context: null, history: [], question: 'Question?', image: null, temperature: 0 }
 beforeEach(() => vi.resetAllMocks())
 
 describe('provider stream completion contract', () => {
+  it('keeps a direct evaluation to one requested model call when the provider fails', async () => {
+    mocks.create.mockRejectedValue(new Error('provider unavailable'))
+    await expect(new Response(streamAnswerDirect(params)).text()).rejects.toThrow('Assistant response incomplete')
+    expect(mocks.create).toHaveBeenCalledTimes(1)
+    expect(mocks.create.mock.calls[0][0].model).toBe(params.model)
+  })
   it('propagates late provider failure instead of returning an error note as a successful answer', async () => {
     let fail!: () => void
     const gate = new Promise<void>((resolve) => { fail = resolve })

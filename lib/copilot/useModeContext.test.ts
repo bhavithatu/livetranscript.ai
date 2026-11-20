@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { cleanup, renderHook } from '@testing-library/react'
+import { describe, it, expect, vi } from 'vitest'
+import { act, cleanup, renderHook } from '@testing-library/react'
 import { cosine, chunkCorpus, useModeContext } from './useModeContext'
 
 describe('cosine', () => {
@@ -27,6 +27,30 @@ describe('chunkCorpus', () => {
 })
 
 describe('saved mode context', () => {
+  it('keeps original story evidence available after retrieval and follow-up preparation', async () => {
+    localStorage.setItem('lt.context.behavioral', JSON.stringify({ instructions: '', docs: [], stories: [
+      { id: 'queue', title: 'Queue migration', fullText: 'I measured a 14% reduction in repeated work.', embedding: [1, 0] },
+      { id: 'release', title: 'Release rollout', fullText: 'I owned the rollback check, not the full architecture.', embedding: [0, 1] },
+    ] }))
+    const fetcher = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ embeddings: [[1, 0]] }), { headers: { 'Content-Type': 'application/json' } }))
+    vi.stubGlobal('fetch', fetcher)
+    try {
+      const hook = renderHook(() => useModeContext('behavioral'))
+      let first: { title: string; fullText: string }[] = []
+      let followup: { title: string; fullText: string }[] = []
+      await act(async () => { first = await hook.result.current.retrieveStories('Tell me about the migration.', 1) })
+      // No answer was generated or adopted. A follow-up must still get its source.
+      await act(async () => { followup = await hook.result.current.retrieveStories('How did you measure 14%?', 1) })
+      expect(followup).toEqual(first)
+      expect(followup).toEqual([{ title: 'Queue migration', fullText: 'I measured a 14% reduction in repeated work.' }])
+      expect(hook.result.current.storyCount).toBe(2)
+    } finally {
+      cleanup()
+      localStorage.removeItem('lt.context.behavioral')
+      vi.unstubAllGlobals()
+    }
+  })
+
   it('discards malformed documents and embeddings before rendering or retrieval', () => {
     localStorage.setItem('lt.context.validation-test', JSON.stringify({
       instructions: 'Use the current repository.',

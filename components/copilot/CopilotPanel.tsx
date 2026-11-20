@@ -39,6 +39,11 @@ import { useScreenRepository, type RepoTask } from '@/lib/repo/useScreenReposito
 import { ScreenRepositoryControls, RepoAnalysisView } from './ScreenRepositoryPanel'
 import { useResponsePreferences } from '@/lib/copilot/useResponsePreferences'
 import { ResponsePreferencesControls, WorkspaceEmptyState, WorkspaceModeNavigation } from './CopilotWorkspaceUi'
+import { useBehavioralSession } from '@/lib/behavioral/useBehavioralSession'
+import { BehavioralContextPanel } from '@/components/behavioral/BehavioralContextPanel'
+import { serializeBehavioralSources } from '@/lib/behavioral/sources'
+import { retrieveAnswerSources } from '@/lib/copilot/answerSources'
+import { createBehavioralTranscriptBoundary, type BehavioralTranscriptBoundary } from '@/lib/behavioral/roundTranscript'
 
 // Ask-your-transcript side panel. Grounded, streaming answers from the live
 // transcript. Matches the app's editorial-glass language: glass surface, emerald
@@ -69,6 +74,8 @@ export function CopilotPanel({
   variant = 'drawer',
   initialMode = 'general',
   onModeChange,
+  archiveOwnerId,
+  behavioralTranscriptBoundary,
 }: {
   getTranscript: () => string
   onClose?: () => void
@@ -79,20 +86,32 @@ export function CopilotPanel({
   variant?: 'drawer' | 'workspace'
   initialMode?: CopilotMode
   onModeChange?: (mode: CopilotMode) => void
+  archiveOwnerId?: string | null
+  behavioralTranscriptBoundary?: BehavioralTranscriptBoundary
 }) {
   const workspace = variant === 'workspace'
   const responsePreferences = useResponsePreferences()
-  const { turns, streaming, error, ask, clear, stop } = useCopilot(getTranscript, responsePreferences.preferences)
+  const [mode, setMode] = useState<CopilotMode>(initialMode)
+  const behavioral = useBehavioralSession({ ownerId: archiveOwnerId, scope: workspace ? 'copilot-workspace' : 'copilot-panel' })
+  const [ownedTranscriptBoundary] = useState(createBehavioralTranscriptBoundary)
+  const roundTranscriptBoundary = behavioralTranscriptBoundary ?? ownedTranscriptBoundary
+  const [behavioralTranscriptNotice, setBehavioralTranscriptNotice] = useState<string | null>(null)
+  const getBehavioralTranscript = useCallback(() => {
+    const result = roundTranscriptBoundary.read(getTranscript())
+    if (result.uncertain) setBehavioralTranscriptNotice('The audio window changed after the new round started. Ambiguous speech was excluded; record any missing facts or answers explicitly.')
+    return result.text
+  }, [getTranscript, roundTranscriptBoundary])
+  const getAnswerTranscript = useCallback(() => mode === 'behavioral' ? getBehavioralTranscript() : getTranscript(), [mode, getBehavioralTranscript, getTranscript])
+  const { turns, streaming, error, ask, clear, stop } = useCopilot(getAnswerTranscript, responsePreferences.preferences, behavioral)
   const screen = useScreenStream()
   const [input, setInput] = useState('')
-  const [mode, setMode] = useState<CopilotMode>(initialMode)
   const repo = useRepoInterview(getTranscript, mode === 'repoInterview')
   const screenRepo = useScreenRepository(mode === 'repoInterview', screen.sharing, screen.grabCodeFrame, responsePreferences.preferences)
   const contexts = useModeContexts()
   const context = contexts[mode === 'aptitude' ? 'general' : mode] // aptitude owns its separate image workflow
   const profile = useCandidateProfile() // resume + JD: global, always-injected grounding
   const router = useOrchestrationRouter() // auto mode-routing + live web search for a question
-  const feed = useAnswerFeed(responsePreferences.preferences)
+  const feed = useAnswerFeed(responsePreferences.preferences, behavioral)
   const me = useMeContext() // opt-in mic stream: "what I said" as AI context, never in transcript
   const [showContextEditor, setShowContextEditor] = useState(false)
   const orchestrator = useOrchestrator(ask)
@@ -215,10 +234,13 @@ export function CopilotPanel({
       return (async () => {
         try {
         if (mode === 'repoInterview') { await answerRepoQuestion(q); return }
-        const routed = await router.route(q)
+        const routed = mode === 'behavioral' && behavioral.round.profile.questionStyle === 'assessment'
+          ? { classification: { mode: 'behavioral' as const, isQuestion: true }, webContext: null }
+          : await router.route(q)
         if (!current()) return
         if (!viaButton && routed.classification && !routed.classification.isQuestion) return
         const answerMode: CopilotMode = routed.classification?.mode ?? mode
+        if (answerMode === 'behavioral' && !behavioral.ready) throw new Error('Behavioral context is still loading. Try again in a moment.')
         if (answerMode !== mode) setMode(answerMode)
         if (answerMode === 'repoInterview') { await answerRepoQuestion(q); return }
         if (answerMode === 'aptitude') {
@@ -226,25 +248,23 @@ export function CopilotPanel({
           return
         }
         const routedContext = contexts[answerMode]
-        const retrieved =
-          answerMode === 'behavioral' && routedContext.storyCount > 0
-            ? await routedContext.retrieveStories(q, 2).then((ss) =>
-                ss.length ? ss.map((s) => `STORY — ${s.title}\n${s.fullText}`).join('\n\n---\n\n') : null,
-              )
-            : routedContext.count > 0
-              ? await routedContext.retrieve(q)
-              : null
+        const retrieved = await retrieveAnswerSources(routedContext, answerMode, q)
         if (!current()) return
         const parts = [
           routed.webContext && `LIVE WEB RESULTS (current facts — prefer these for anything time-sensitive):\n${routed.webContext}`,
           profile.contextBlock(),
           me.getMeContext() && `What I said: ${me.getMeContext()}`,
-          retrieved,
+          ...retrieved.map((source) => source.text),
         ].filter(Boolean)
-        const ctx = parts.length ? parts.join('\n\n') : null
+        const ctx = answerMode === 'behavioral' ? serializeBehavioralSources([
+          { label: 'Current company web references; not candidate experience', text: routed.webContext || '' },
+          { label: 'Provided candidate resume and target job description', text: profile.contextBlock() || '' },
+          { label: 'Candidate microphone context; transcription may contain errors', text: me.getMeContext() || '' },
+          ...retrieved,
+        ].filter((source) => source.text.trim())) : parts.length ? parts.join('\n\n') : null
         const image = screen.sharing && usesScreen(answerMode) ? screen.grabFrame() : null
         setPreparingCaptured(false)
-        await feed.answer(q, answerMode, ctx, image, routedContext.instructions || null, getTranscript())
+        await feed.answer(q, answerMode, ctx, image, routedContext.instructions || null, answerMode === 'behavioral' ? getBehavioralTranscript() : getTranscript())
         } catch (cause) {
           if (current()) setPreparationError(cause instanceof Error ? cause.message : 'Could not prepare this question. Try Answer last question again.')
         } finally {
@@ -255,7 +275,7 @@ export function CopilotPanel({
         }
       })()
     },
-    [mode, contexts, profile, me, screen, router, feed, getTranscript, answerRepoQuestion, streaming, feedBusy, pipelineBusy],
+    [mode, contexts, profile, me, screen, router, feed, getTranscript, getBehavioralTranscript, behavioral, answerRepoQuestion, streaming, feedBusy, pipelineBusy],
   )
 
   // Manual "Answer" button: answer the latest question heard in the transcript RIGHT
@@ -348,6 +368,7 @@ export function CopilotPanel({
     setPreparationError(null)
     setQuestionNotice(null)
     try {
+      if (mode === 'behavioral' && !behavioral.ready) throw new Error('Behavioral context is still loading. Try again in a moment.')
       if (mode === 'repoInterview') {
         const answered = await answerRepoQuestion(q)
         if (answered && generation === preparationGeneration.current) setInput((current) => current === q ? '' : current)
@@ -356,14 +377,13 @@ export function CopilotPanel({
       setView('chat')
       followsAnswer.current = true
       const image = screen.sharing && usesScreen(mode) ? screen.grabFrame() : null
-      const retrieved =
-        mode === 'behavioral' && context.storyCount > 0
-          ? await context.retrieveStories(q, 2).then((stories) => stories.length
-            ? stories.map((story) => `STORY — ${story.title}\n${story.fullText}`).join('\n\n---\n\n')
-            : null)
-          : context.count > 0 ? await context.retrieve(q) : null
+      const retrieved = await retrieveAnswerSources(context, mode, q)
       if (generation !== preparationGeneration.current) return
-      const merged = [profile.contextBlock(), retrieved, me.getMeContext()].filter(Boolean).join('\n\n') || null
+      const merged = mode === 'behavioral' ? serializeBehavioralSources([
+        { label: 'Provided candidate resume and target job description', text: profile.contextBlock() || '' },
+        ...retrieved,
+        { label: 'Candidate microphone context; transcription may contain errors', text: me.getMeContext() || '' },
+      ].filter((source) => source.text.trim())) : [profile.contextBlock(), ...retrieved.map((source) => source.text), me.getMeContext()].filter(Boolean).join('\n\n') || null
       setLastSubmitted(q)
       setInput((current) => current === q ? '' : current)
       setPreparing(false)
@@ -391,6 +411,19 @@ export function CopilotPanel({
     feed.stop()
     orchestrator.reset()
     stop()
+  }
+
+  const newBehavioralRound = () => {
+    stopAnswer()
+    roundTranscriptBoundary.reset(getTranscript())
+    setBehavioralTranscriptNotice(null)
+    me.clearContext()
+    clear('behavioral')
+    feed.clear('behavioral')
+    contexts.behavioral.resetSpent()
+    behavioral.reset()
+    setLastSubmitted(null)
+    setReview({ loading: false, text: null, error: null })
   }
 
   const choosePrompt = (prompt: string) => {
@@ -518,7 +551,7 @@ export function CopilotPanel({
               <FileText size={16} aria-hidden />{showContextEditor ? 'Close context' : 'Your context'}<ChevronDown size={14} aria-hidden className={`ml-auto ${showContextEditor ? 'rotate-180' : ''}`} />
             </button>
             <p className="text-xs leading-relaxed text-[color:var(--muted)]">{contextSummary}</p>
-            {context.storyCount > 0 && <div className="mt-2 flex items-center gap-2 text-xs text-[color:var(--muted)]"><span>{context.storyCount} stories</span><button type="button" onClick={context.resetSpent} className="min-h-11 px-2 text-emerald-800 hover:underline">New round</button></div>}
+            {context.storyCount > 0 && <p className="mt-2 text-xs text-[color:var(--muted)]">{context.storyCount} source stories available for follow-ups</p>}
           </div>
           {workspace && questions.length > 0 && <section aria-label="Recent questions" className="border-t border-[color:var(--line)] px-4 py-4">
             <h2 className="text-xs font-semibold text-ink">Recent questions <span className="font-normal text-[color:var(--muted)]">({questions.length})</span></h2>
@@ -530,6 +563,8 @@ export function CopilotPanel({
         </div>
 
         <div className={workspace ? 'copilot-workspace-main flex min-w-0 flex-col' : 'contents'}>
+          {mode === 'behavioral' && <BehavioralContextPanel session={behavioral} onBeforeChange={stopAnswer} onNewRound={newBehavioralRound} persistent={!!archiveOwnerId} sourceNotice={behavioralTranscriptNotice}
+            latestQuestion={view === 'answers' ? feed.current?.question || '' : questions.at(-1)?.t.content || ''} />}
           {mode !== 'repoInterview' && <div className="flex flex-wrap items-center gap-1 border-b border-[color:var(--line)] px-4 py-2 text-xs">
             <button type="button" onClick={() => setView('chat')} aria-pressed={view === 'chat'} data-active={view === 'chat'} className="min-h-11 rounded-lg px-3 text-[color:var(--muted)] hover:bg-[color:var(--paper)] data-[active=true]:bg-[color:var(--accent-soft)] data-[active=true]:font-medium data-[active=true]:text-[color:var(--signal)]">{workspace ? 'Conversation' : 'Chat'}</button>
             <button type="button" onClick={() => setView('answers')} aria-pressed={view === 'answers'} data-active={view === 'answers'} className="min-h-11 rounded-lg px-3 text-[color:var(--muted)] hover:bg-[color:var(--paper)] data-[active=true]:bg-[color:var(--accent-soft)] data-[active=true]:font-medium data-[active=true]:text-[color:var(--signal)]">{workspace ? 'Captured questions' : 'Answers'}{feed.count > 0 ? ` (${feed.count})` : ''}</button>
@@ -539,8 +574,8 @@ export function CopilotPanel({
             <div className="mx-auto max-w-3xl">
               <div className="mb-3 flex items-center gap-2"><h2 className="font-semibold text-lg">Your context</h2><button type="button" onClick={() => setShowContextEditor(false)} aria-label="Close context editor" className="ml-auto flex h-11 w-11 items-center justify-center rounded-full text-[color:var(--muted)] hover:bg-black/5"><X size={16} aria-hidden /></button></div>
               <p className="mb-4 text-xs leading-relaxed text-[color:var(--muted)]">Background and documents are saved on this device. Relevant context is sent to the AI when you ask a question.</p>
-              <ContextEditor key={mode} context={context} profile={profile} />
-              {(context.docs.length > 0 || context.instructions) && <button type="button" onClick={context.clear} className="mt-4 min-h-11 text-xs text-[color:var(--muted)] hover:text-[color:var(--stop)]">Clear {MODE_PROFILES[mode].label.toLowerCase()} documents and instructions</button>}
+              <ContextEditor key={mode} context={context} profile={profile} onBeforeChange={mode === 'behavioral' ? stopAnswer : undefined} />
+              {(context.docs.length > 0 || context.instructions) && <button type="button" onClick={() => { if (mode === 'behavioral') stopAnswer(); context.clear() }} className="mt-4 min-h-11 text-xs text-[color:var(--muted)] hover:text-[color:var(--stop)]">Clear {MODE_PROFILES[mode].label.toLowerCase()} documents and instructions</button>}
             </div>
           </section>}
           {mode === 'repoInterview' && <div className={workspace ? 'shrink-0' : 'max-h-[50%] shrink-0 overflow-y-auto'}>
@@ -607,9 +642,11 @@ export function CopilotPanel({
 function ContextEditor({
   context,
   profile,
+  onBeforeChange,
 }: {
   context: ReturnType<typeof useModeContext>
   profile: ReturnType<typeof useCandidateProfile>
+  onBeforeChange?: () => void
 }) {
   const [pasteText, setPasteText] = useState('')
   const [instructionsDraft, setInstructionsDraft] = useState(context.instructions)
@@ -630,10 +667,11 @@ function ContextEditor({
 
   // The saved instructions are dirty when the draft diverges from what's persisted.
   const instructionsDirty = instructionsDraft !== context.instructions
-  const saveInstructions = () => context.setInstructions(instructionsDraft)
+  const saveInstructions = () => { if (instructionsDirty) { onBeforeChange?.(); context.setInstructions(instructionsDraft) } }
 
   const onFiles = async (files: FileList | null) => {
     if (!files?.length) return
+    onBeforeChange?.()
     for (const file of Array.from(files)) {
       await context.addDocument(file.name, await file.text())
     }
@@ -642,6 +680,7 @@ function ContextEditor({
 
   const addPaste = async () => {
     if (!pasteText.trim()) return
+    onBeforeChange?.()
     await context.addDocument(`Pasted ${new Date().toLocaleDateString()}`, pasteText)
     setPasteText('')
   }
@@ -655,7 +694,7 @@ function ContextEditor({
             Your background <span className="normal-case text-black/30">· grounds every mode</span>
           </label>
           {profile.hasProfile && (
-            <button onClick={profile.clear} className="ml-auto rounded-full px-2 py-0.5 text-[11px] text-black/40 hover:bg-black/5">
+            <button onClick={() => { onBeforeChange?.(); profile.clear() }} className="ml-auto rounded-full px-2 py-0.5 text-[11px] text-black/40 hover:bg-black/5">
               Clear
             </button>
           )}
@@ -664,7 +703,7 @@ function ContextEditor({
           id={`${fieldId}-resume`}
           aria-label="Resume and background"
           value={profile.resume}
-          onChange={(e) => profile.setResume(e.target.value)}
+          onChange={(e) => { onBeforeChange?.(); profile.setResume(e.target.value) }}
           rows={3}
           placeholder="Paste your resume — the AI grounds behavioral stories, coding language, and design domain in your real background…"
           className="mt-1 w-full resize-none rounded-lg border border-black/15 bg-white/80 p-2 text-sm outline-none focus:border-emerald-700"
@@ -673,7 +712,7 @@ function ContextEditor({
         <textarea
           id={`${fieldId}-jd`}
           value={profile.jd}
-          onChange={(e) => profile.setJd(e.target.value)}
+          onChange={(e) => { onBeforeChange?.(); profile.setJd(e.target.value) }}
           rows={2}
           placeholder="…and paste the job description (optional) to tune answers to the role."
           className="mt-1.5 w-full resize-none rounded-lg border border-black/15 bg-white/80 p-2 text-sm outline-none focus:border-emerald-700"
@@ -733,7 +772,7 @@ function ContextEditor({
                   {d.chunks.length} snippet{d.chunks.length === 1 ? '' : 's'}
                 </span>
                 <button
-                  onClick={() => context.removeDocument(d.id)}
+                  onClick={() => { onBeforeChange?.(); context.removeDocument(d.id) }}
                   aria-label={`Remove ${d.name}`}
                   className="ml-auto shrink-0 text-black/40 hover:text-[color:var(--stop)]"
                 >
@@ -968,7 +1007,7 @@ function AnswersView({
         >
           {review.loading ? 'Reviewing…' : 'Review'}
         </button>
-        <button onClick={feed.clear} className="rounded-full px-2 py-1 text-black/45 hover:bg-black/5 hover:text-ink">Clear</button>
+        <button onClick={() => feed.clear()} className="rounded-full px-2 py-1 text-black/45 hover:bg-black/5 hover:text-ink">Clear</button>
       </div>
       {(review.text || review.error) && (
         <div className="max-h-[45%] overflow-y-auto border-b border-emerald-700/15 bg-emerald-700/[0.04] px-4 py-3">
