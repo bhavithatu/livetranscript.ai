@@ -190,11 +190,14 @@ async def main():
             assert actual['id'] != draft['id']
             report['checks'].append('Visible company/source forms and explicit actual-answer form keep 14% separate from the unconfirmed 40% AI suggestion')
 
-            for index in range(3, 8):
+            # Each request sees earlier completions, not its own response. Eight
+            # requests produce nine records in the final request: seven previous
+            # suggestions, one original-source record and one actual answer.
+            for index in range(3, 9):
                 snapshot = await ask(f'Follow-up {index}: what did you personally validate in that project?', f'Authored QA follow-up {index}: keep the supplied ownership and measurement.')
                 assert_provenance(snapshot)
-            assert len(requests) == 7 and len(requests[-1]['behavioralSession']['records']) > 8
-            report['checks'].append('Seven real UI answer requests retain the early actual answer and original source beyond the former four-pair history window')
+            assert len(requests) == 8 and len(requests[-1]['behavioralSession']['records']) > 8, 'The long-round fixture must send eight questions and more than eight retained records.'
+            report['checks'].append('Eight real UI answer requests retain the early actual answer and original source beyond the former four-pair history window')
 
             await details(panel.locator('summary').filter(has_text='Round history and controls'))
             actual_row = panel.locator('li').filter(has=page.get_by_text('Your recorded answer', exact=True)).filter(has_text=ACTUAL)
