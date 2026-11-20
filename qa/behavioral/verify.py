@@ -3,9 +3,10 @@
 Run with the pinned playwright==1.55.0 runtime:
   BEHAVIORAL_QA_URL=http://127.0.0.1:3002 python3 qa/behavioral/verify.py
 
-Every answer/classifier response is an authored fixture. All other browser API
-requests are blocked, so this journey cannot start paid model, embedding, search
-or transcription work. The real invalid-snapshot route is probed before browser
+Every answer/classifier response is an authored fixture. Expected app start/stop
+diagnostics receive a validated local receipt; all other browser API requests are
+blocked, so this journey cannot start paid model, embedding, search or
+transcription work. The real invalid-snapshot route is probed before browser
 interception; it must reject the body with 400 under the dev-only owner bypass.
 This checks application wiring and persistence, never model answer accuracy.
 """
@@ -61,6 +62,30 @@ def assert_provenance(snapshot):
     return actual[0], drafts[0]
 
 
+def assert_lifecycle_diagnostics(body):
+    assert isinstance(body, dict) and set(body) == {'events'}, 'Unexpected diagnostics batch fields.'
+    events = body['events']
+    assert isinstance(events, list) and 1 <= len(events) <= 25, 'Diagnostics batch must contain 1–25 events.'
+    assert len(json.dumps(body).encode('utf-8')) <= 32_000, 'Diagnostics batch exceeds the route limit.'
+    fields = {'v', 'sessionId', 'operationId', 'seq', 'at', 'stage', 'event', 'attrs'}
+    uuid = r'[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}'
+    for event in events:
+        assert isinstance(event, dict) and set(event) == fields and type(event['v']) is int and event['v'] == 1, 'Invalid diagnostics event schema.'
+        assert event['stage'] == 'app' and event['event'] in ('start', 'stop'), f'Unexpected diagnostics stage/event: {event["stage"]}/{event["event"]}'
+        assert all(isinstance(event[key], str) and re.fullmatch(uuid, event[key]) for key in ('sessionId', 'operationId')), 'Invalid diagnostics identity.'
+        assert type(event['seq']) is int and 1 <= event['seq'] <= 10_000_000, 'Invalid diagnostics sequence.'
+        assert type(event['at']) is int and time.time() * 1000 - 86_400_000 <= event['at'] <= time.time() * 1000 + 300_000, 'Invalid diagnostics event time.'
+        attrs = event['attrs']
+        assert isinstance(attrs, dict), 'Invalid diagnostics metadata.'
+        if event['event'] == 'start':
+            assert set(attrs) <= {'runtime', 'release'} and attrs.get('runtime') == 'web', 'Unexpected app-start metadata.'
+            if 'release' in attrs:
+                assert isinstance(attrs['release'], str) and re.fullmatch(r'[a-fA-F0-9]{7,40}', attrs['release']), 'Invalid diagnostics release.'
+        else:
+            assert attrs == {}, 'Unexpected app-stop metadata.'
+    return len(events)
+
+
 async def main():
     runtime_version = importlib.metadata.version('playwright')
     assert runtime_version == '1.55.0', 'Use the pinned playwright==1.55.0 runtime.'
@@ -68,7 +93,8 @@ async def main():
     report = {'kind': 'behavioral-browser-integration', 'base': BASE, 'liveModel': False,
               'playwrightVersion': runtime_version,
               'previewOwner': True, 'persistenceTested': False, 'checks': [], 'layouts': [],
-              'console': [], 'browserErrors': [], 'stubErrors': [], 'blockedApiRequests': []}
+              'console': [], 'browserErrors': [], 'stubErrors': [], 'blockedApiRequests': [],
+              'diagnosticBatches': [], 'diagnosticsFixture': 'Only bounded app/start and app/stop metadata receives a local count receipt; error/stall and every other stage/event fail.'}
     requests = []
     state = {'reply': FIRST_DRAFT}
 
@@ -98,6 +124,14 @@ async def main():
                     await route.fulfill(status=200, content_type='text/plain; charset=utf-8', body=state['reply'], headers={'Cache-Control': 'no-store'})
                 elif path == '/api/copilot/classify':
                     await route.fulfill(status=200, json={'result': {'isQuestion': True, 'mode': 'behavioral', 'needsWeb': False, 'confidence': 1}})
+                elif route.request.url == BASE + '/api/diagnostics' and route.request.method == 'POST':
+                    # Reload flushes app lifecycle metadata. Errors and unrelated
+                    # stages must fail this fixture instead of receiving a receipt.
+                    assert route.request.headers.get('content-type', '').startswith('application/json'), 'Diagnostics must use JSON.'
+                    body = route.request.post_data_json
+                    accepted = assert_lifecycle_diagnostics(body)
+                    report['diagnosticBatches'].append(copy.deepcopy(body))
+                    await route.fulfill(status=200, json={'accepted': accepted}, headers={'Cache-Control': 'no-store'})
                 else:
                     report['blockedApiRequests'].append({'path': path, 'method': route.request.method})
                     await route.fulfill(status=403, json={'error': 'Unexpected API request blocked by the local behavioral QA harness.'})
@@ -279,7 +313,8 @@ async def main():
             (OUT / 'browser-report.json').write_text(json.dumps(report, indent=2))
             await browser.close()
     print(json.dumps({'passed': report['passed'], 'checks': len(report['checks']), 'layouts': len(report['layouts']),
-                      'interceptedAnswers': len(requests), 'liveModel': False, 'persistenceTested': report['persistenceTested']}))
+                      'interceptedAnswers': len(requests), 'diagnosticBatches': len(report['diagnosticBatches']),
+                      'liveModel': False, 'persistenceTested': report['persistenceTested']}))
 
 
 if __name__ == '__main__':
